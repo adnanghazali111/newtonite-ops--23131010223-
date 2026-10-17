@@ -8,7 +8,7 @@
     "dev:api": "npm --prefix backend run dev",
     "dev:web": "npm --prefix frontend run dev",
     "test": "npm --prefix backend test",
-    "typecheck": "npm --prefix backend run typecheck",
+    "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run build",
     "db:migrate": "npm --prefix backend run db:migrate",
     "db:seed": "npm --prefix backend run db:seed",
     "setup": "npm run db:migrate && npm run db:seed"

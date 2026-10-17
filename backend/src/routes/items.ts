@@ -9,6 +9,19 @@ import { validateTransition } from '../services/workflow.js';
 const router = Router();
 router.use(authenticate);
 
+const workItemStatuses = ['Open', 'InProgress', 'AwaitingApproval', 'Resolved', 'Closed'] as const;
+const workItemPriorities = ['Low', 'Medium', 'High', 'Critical'] as const;
+const uuidSchema = z.string().uuid();
+
+function getItemId(req: Request, res: Response): string | null {
+  const parsed = uuidSchema.safeParse(req.params.id);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid item ID' });
+    return null;
+  }
+  return parsed.data;
+}
+
 // ─── Helpers ────────────────────────────────────────────────
 
 function encodeCursor(createdAt: string, id: string): string {
@@ -26,14 +39,37 @@ function decodeCursor(cursor: string): { createdAt: string; id: string } | null 
 }
 
 function hashBody(body: unknown): string {
-  return crypto.createHash('sha256').update(JSON.stringify(body)).digest('hex');
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify(sortObjectKeys(body)))
+    .digest('hex');
+}
+
+function sortObjectKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortObjectKeys);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, sortObjectKeys(child)]),
+    );
+  }
+  return value;
+}
+
+async function isTeamMember(userId: string, teamId: string): Promise<boolean> {
+  const result = await query(
+    'SELECT 1 FROM memberships WHERE user_id = $1 AND team_id = $2',
+    [userId, teamId],
+  );
+  return result.rows.length > 0;
 }
 
 // ─── GET / — List Items ────────────────────────────────────
 
 const listQuerySchema = z.object({
-  status: z.string().optional(),
-  priority: z.string().optional(),
+  status: z.enum(workItemStatuses).optional(),
+  priority: z.enum(workItemPriorities).optional(),
   assigneeId: z.string().uuid().optional(),
   q: z.string().optional(),
   cursor: z.string().optional(),
@@ -164,33 +200,58 @@ router.post('/', async (req: Request, res: Response) => {
     const user = req.user!;
     const { title, description, type, priority, teamId, assigneeId, dueAt } = parsed.data;
 
-    // Authorization check
+    // Authorization check. A member may create an item and set themselves as
+    // assignee, but assigning another person is reserved for Leads and Admins.
     const authResult = authorize(user, 'create', { teamId });
     if (!authResult.allowed) {
       return res.status(403).json({ error: authResult.reason });
     }
 
-    // Idempotency handling
-    const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
-    const bodyHash = hashBody(parsed.data);
-
-    if (idempotencyKey) {
-      const existing = await query(
-        'SELECT request_hash, response_status, response_body FROM idempotency_keys WHERE user_id = $1 AND key = $2',
-        [user.id, idempotencyKey]
-      );
-
-      if (existing.rows.length > 0) {
-        const row = existing.rows[0];
-        if (row.request_hash !== bodyHash) {
-          return res.status(409).json({ error: 'Idempotency key reused with different payload' });
-        }
-        return res.status(row.response_status).json(row.response_body);
+    if (assigneeId && assigneeId !== user.id) {
+      const assignResult = authorize(user, 'assign', { teamId });
+      if (!assignResult.allowed) {
+        return res.status(403).json({ error: assignResult.reason });
       }
     }
 
-    // Create item in transaction
-    const item = await transaction(async (client) => {
+    if (assigneeId && !(await isTeamMember(assigneeId, teamId))) {
+      return res.status(400).json({ error: 'Assignee must belong to the selected team' });
+    }
+
+    const idempotencyKey = req.get('Idempotency-Key') || undefined;
+    if (idempotencyKey && idempotencyKey.length > 255) {
+      return res.status(400).json({ error: 'Idempotency-Key must be at most 255 characters' });
+    }
+    const bodyHash = hashBody(parsed.data);
+
+    const result = await transaction(async (client) => {
+      // Serialize matching user/key pairs so parallel retries cannot each
+      // create an item before the unique-key constraint is evaluated.
+      if (idempotencyKey) {
+        await client.query(
+          'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+          [user.id, idempotencyKey],
+        );
+
+        const existing = await client.query(
+          `SELECT request_hash, response_status, response_body
+             FROM idempotency_keys
+            WHERE user_id = $1 AND key = $2`,
+          [user.id, idempotencyKey],
+        );
+
+        if (existing.rows.length > 0) {
+          const row = existing.rows[0];
+          if (row.request_hash !== bodyHash) {
+            return {
+              status: 409,
+              body: { error: 'Idempotency key reused with different payload' },
+            };
+          }
+          return { status: row.response_status, body: row.response_body };
+        }
+      }
+
       const itemResult = await client.query(
         `INSERT INTO work_items (title, description, type, priority, team_id, assignee_id, created_by, due_at)
          VALUES ($1, $2, $3::work_item_type, $4::work_item_priority, $5, $6, $7, $8)
@@ -210,9 +271,20 @@ router.post('/', async (req: Request, res: Response) => {
         })]
       );
 
+      const fullItem = await client.query(
+        `SELECT w.*, creator.display_name AS creator_name,
+                assignee.display_name AS assignee_name, t.name AS team_name
+           FROM work_items w
+           JOIN users creator ON creator.id = w.created_by
+           LEFT JOIN users assignee ON assignee.id = w.assignee_id
+           JOIN teams t ON t.id = w.team_id
+          WHERE w.id = $1`,
+        [newItem.id],
+      );
+      const responseBody = { item: mapItem(fullItem.rows[0]) };
+
       // Store idempotency key
       if (idempotencyKey) {
-        const responseBody = { item: mapItem(newItem) };
         await client.query(
           `INSERT INTO idempotency_keys (user_id, key, request_hash, response_status, response_body)
            VALUES ($1, $2, $3, $4, $5)`,
@@ -220,21 +292,10 @@ router.post('/', async (req: Request, res: Response) => {
         );
       }
 
-      return newItem;
+      return { status: 201, body: responseBody };
     });
 
-    // Fetch with joined names
-    const fullItem = await query(
-      `SELECT w.*, creator.display_name AS creator_name, assignee.display_name AS assignee_name, t.name AS team_name
-       FROM work_items w
-       JOIN users creator ON creator.id = w.created_by
-       LEFT JOIN users assignee ON assignee.id = w.assignee_id
-       JOIN teams t ON t.id = w.team_id
-       WHERE w.id = $1`,
-      [item.id]
-    );
-
-    res.status(201).json({ item: mapItem(fullItem.rows[0]) });
+    return res.status(result.status).json(result.body);
   } catch (err) {
     console.error('Create item error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -245,6 +306,8 @@ router.post('/', async (req: Request, res: Response) => {
 
 router.get('/:id', async (req: Request, res: Response) => {
   try {
+    const itemId = getItemId(req, res);
+    if (!itemId) return;
     const user = req.user!;
     const userTeamIds = getUserTeamIds(user);
 
@@ -255,7 +318,7 @@ router.get('/:id', async (req: Request, res: Response) => {
        LEFT JOIN users assignee ON assignee.id = w.assignee_id
        JOIN teams t ON t.id = w.team_id
        WHERE w.id = $1 AND w.team_id = ANY($2)`,
-      [req.params.id, userTeamIds]
+      [itemId, userTeamIds]
     );
 
     if (result.rows.length === 0) {
@@ -274,14 +337,20 @@ router.get('/:id', async (req: Request, res: Response) => {
 const updateItemSchema = z.object({
   title: z.string().min(1).max(500).optional(),
   description: z.string().optional(),
-  priority: z.enum(['Low', 'Medium', 'High', 'Critical']).optional(),
+  priority: z.enum(workItemPriorities).optional(),
   dueAt: z.string().datetime().optional().nullable(),
   assigneeId: z.string().uuid().optional().nullable(),
-  version: z.number().int(),
-});
+  version: z.number().int().positive(),
+}).refine(
+  (data) => data.title !== undefined || data.description !== undefined ||
+    data.priority !== undefined || data.dueAt !== undefined || data.assigneeId !== undefined,
+  { message: 'Provide at least one field to update' },
+);
 
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
+    const itemId = getItemId(req, res);
+    if (!itemId) return;
     const parsed = updateItemSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() });
@@ -294,7 +363,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
     // Fetch current item
     const current = await query(
       'SELECT * FROM work_items WHERE id = $1 AND team_id = ANY($2)',
-      [req.params.id, userTeamIds]
+      [itemId, userTeamIds]
     );
 
     if (current.rows.length === 0) {
@@ -313,6 +382,10 @@ router.patch('/:id', async (req: Request, res: Response) => {
 
     if (!authResult.allowed) {
       return res.status(403).json({ error: authResult.reason });
+    }
+
+    if (assigneeId && !(await isTeamMember(assigneeId, item.team_id))) {
+      return res.status(400).json({ error: 'Assignee must belong to the item team' });
     }
 
     // Build SET clause dynamically
@@ -358,7 +431,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
         `UPDATE work_items SET ${setClauses.join(', ')}
          WHERE id = $${setIdx} AND team_id = $${setIdx + 1} AND version = $${setIdx + 2}
          RETURNING *`,
-        [...setParams, req.params.id, item.team_id, version]
+        [...setParams, itemId, item.team_id, version]
       );
 
       if (updated.rows.length === 0) {
@@ -369,7 +442,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
       await client.query(
         `INSERT INTO activity_events (work_item_id, team_id, actor_id, event_type, payload)
          VALUES ($1, $2, $3, 'updated', $4)`,
-        [req.params.id, item.team_id, user.id, JSON.stringify({ changes })]
+        [itemId, item.team_id, user.id, JSON.stringify({ changes })]
       );
 
       return updated.rows[0];
@@ -387,7 +460,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
        LEFT JOIN users assignee ON assignee.id = w.assignee_id
        JOIN teams t ON t.id = w.team_id
        WHERE w.id = $1`,
-      [req.params.id]
+      [itemId]
     );
 
     res.json({ item: mapItem(fullItem.rows[0]) });
@@ -400,11 +473,13 @@ router.patch('/:id', async (req: Request, res: Response) => {
 // ─── POST /:id/claim — Claim Item ──────────────────────────
 
 const claimSchema = z.object({
-  version: z.number().int(),
+  version: z.number().int().positive(),
 });
 
 router.post('/:id/claim', async (req: Request, res: Response) => {
   try {
+    const itemId = getItemId(req, res);
+    if (!itemId) return;
     const parsed = claimSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() });
@@ -417,7 +492,7 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
     // Verify item exists and user has team access
     const current = await query(
       'SELECT * FROM work_items WHERE id = $1 AND team_id = ANY($2)',
-      [req.params.id, userTeamIds]
+      [itemId, userTeamIds]
     );
 
     if (current.rows.length === 0) {
@@ -439,7 +514,7 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
          SET assignee_id = $1, version = version + 1, updated_at = NOW()
          WHERE id = $2 AND team_id = $3 AND assignee_id IS NULL AND version = $4
          RETURNING *`,
-        [user.id, req.params.id, item.team_id, version]
+        [user.id, itemId, item.team_id, version]
       );
 
       if (updated.rows.length === 0) {
@@ -449,7 +524,7 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
       await client.query(
         `INSERT INTO activity_events (work_item_id, team_id, actor_id, event_type, payload)
          VALUES ($1, $2, $3, 'claimed', $4)`,
-        [req.params.id, item.team_id, user.id, JSON.stringify({ assigneeId: user.id })]
+        [itemId, item.team_id, user.id, JSON.stringify({ assigneeId: user.id })]
       );
 
       return updated.rows[0];
@@ -466,7 +541,7 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
        LEFT JOIN users assignee ON assignee.id = w.assignee_id
        JOIN teams t ON t.id = w.team_id
        WHERE w.id = $1`,
-      [req.params.id]
+      [itemId]
     );
 
     res.json({ item: mapItem(fullItem.rows[0]) });
@@ -479,13 +554,15 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
 // ─── POST /:id/transition — Status Transition ─────────────
 
 const transitionSchema = z.object({
-  to: z.string(),
-  version: z.number().int(),
-  reason: z.string().optional(),
+  to: z.enum(workItemStatuses),
+  version: z.number().int().positive(),
+  reason: z.string().max(1000).optional(),
 });
 
 router.post('/:id/transition', async (req: Request, res: Response) => {
   try {
+    const itemId = getItemId(req, res);
+    if (!itemId) return;
     const parsed = transitionSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() });
@@ -498,7 +575,7 @@ router.post('/:id/transition', async (req: Request, res: Response) => {
     // Fetch item
     const current = await query(
       'SELECT * FROM work_items WHERE id = $1 AND team_id = ANY($2)',
-      [req.params.id, userTeamIds]
+      [itemId, userTeamIds]
     );
 
     if (current.rows.length === 0) {
@@ -532,7 +609,7 @@ router.post('/:id/transition', async (req: Request, res: Response) => {
          SET status = $1::work_item_status, version = version + 1, updated_at = NOW()
          WHERE id = $2 AND team_id = $3 AND status = $4::work_item_status AND version = $5
          RETURNING *`,
-        [to, req.params.id, item.team_id, item.status, version]
+        [to, itemId, item.team_id, item.status, version]
       );
 
       if (updated.rows.length === 0) {
@@ -543,7 +620,7 @@ router.post('/:id/transition', async (req: Request, res: Response) => {
         `INSERT INTO activity_events (work_item_id, team_id, actor_id, event_type, payload)
          VALUES ($1, $2, $3, $4, $5)`,
         [
-          req.params.id,
+          itemId,
           item.team_id,
           user.id,
           'transition',
@@ -565,7 +642,7 @@ router.post('/:id/transition', async (req: Request, res: Response) => {
        LEFT JOIN users assignee ON assignee.id = w.assignee_id
        JOIN teams t ON t.id = w.team_id
        WHERE w.id = $1`,
-      [req.params.id]
+      [itemId]
     );
 
     res.json({ item: mapItem(fullItem.rows[0]) });
@@ -583,6 +660,8 @@ const commentSchema = z.object({
 
 router.post('/:id/comments', async (req: Request, res: Response) => {
   try {
+    const itemId = getItemId(req, res);
+    if (!itemId) return;
     const parsed = commentSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() });
@@ -595,7 +674,7 @@ router.post('/:id/comments', async (req: Request, res: Response) => {
     // Verify item
     const current = await query(
       'SELECT * FROM work_items WHERE id = $1 AND team_id = ANY($2)',
-      [req.params.id, userTeamIds]
+      [itemId, userTeamIds]
     );
 
     if (current.rows.length === 0) {
@@ -615,13 +694,13 @@ router.post('/:id/comments', async (req: Request, res: Response) => {
         `INSERT INTO comments (work_item_id, team_id, author_id, body)
          VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        [req.params.id, item.team_id, user.id, body]
+        [itemId, item.team_id, user.id, body]
       );
 
       await client.query(
         `INSERT INTO activity_events (work_item_id, team_id, actor_id, event_type, payload)
          VALUES ($1, $2, $3, 'commented', $4)`,
-        [req.params.id, item.team_id, user.id, JSON.stringify({ commentId: commentResult.rows[0].id, body: body.substring(0, 200) })]
+        [itemId, item.team_id, user.id, JSON.stringify({ commentId: commentResult.rows[0].id, body: body.substring(0, 200) })]
       );
 
       return commentResult.rows[0];
@@ -647,13 +726,15 @@ router.post('/:id/comments', async (req: Request, res: Response) => {
 
 router.get('/:id/comments', async (req: Request, res: Response) => {
   try {
+    const itemId = getItemId(req, res);
+    if (!itemId) return;
     const user = req.user!;
     const userTeamIds = getUserTeamIds(user);
 
     // Verify item access
     const current = await query(
       'SELECT team_id FROM work_items WHERE id = $1 AND team_id = ANY($2)',
-      [req.params.id, userTeamIds]
+      [itemId, userTeamIds]
     );
 
     if (current.rows.length === 0) {
@@ -666,7 +747,7 @@ router.get('/:id/comments', async (req: Request, res: Response) => {
        JOIN users u ON u.id = c.author_id
        WHERE c.work_item_id = $1
        ORDER BY c.created_at ASC`,
-      [req.params.id]
+      [itemId]
     );
 
     res.json({
@@ -689,6 +770,8 @@ router.get('/:id/comments', async (req: Request, res: Response) => {
 
 router.get('/:id/activity', async (req: Request, res: Response) => {
   try {
+    const itemId = getItemId(req, res);
+    if (!itemId) return;
     const user = req.user!;
     const userTeamIds = getUserTeamIds(user);
 
@@ -707,7 +790,7 @@ router.get('/:id/activity', async (req: Request, res: Response) => {
     // Verify item access
     const current = await query(
       'SELECT team_id FROM work_items WHERE id = $1 AND team_id = ANY($2)',
-      [req.params.id, userTeamIds]
+      [itemId, userTeamIds]
     );
 
     if (current.rows.length === 0) {
@@ -715,7 +798,7 @@ router.get('/:id/activity', async (req: Request, res: Response) => {
     }
 
     const conditions: string[] = ['ae.work_item_id = $1'];
-    const params: unknown[] = [req.params.id];
+    const params: unknown[] = [itemId];
     let paramIdx = 2;
 
     if (cursor) {

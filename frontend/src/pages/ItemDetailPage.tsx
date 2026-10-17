@@ -247,11 +247,11 @@ export function ItemDetailPage() {
       </div>
 
       {/* Actions */}
-      {(transitions.length > 0 || canClaim(role, item, user?.id)) && (
+      {(transitions.length > 0 || canClaim(role, item)) && (
         <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">Actions</h3>
           <div className="flex flex-wrap gap-2">
-            {canClaim(role, item, user?.id) && (
+            {canClaim(role, item) && (
               <button
                 onClick={() => claimMutation.mutate()}
                 disabled={claimMutation.isPending}
@@ -337,7 +337,7 @@ export function ItemDetailPage() {
 
 // ─── Helpers ────────────────────────────────────────────────
 
-function canClaim(role: string | undefined, item: WorkItem, userId?: string): boolean {
+function canClaim(role: string | undefined, item: WorkItem): boolean {
   if (!role || role === 'Viewer') return false;
   if (item.assigneeId) return false;
   if (item.status !== 'Open') return false;

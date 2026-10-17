@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import supertest from 'supertest';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
@@ -27,6 +27,7 @@ let engTeamId: string;
 let aliceId: string;
 let bobId: string;
 let carolId: string;
+let eveId: string;
 
 async function login(email: string, password = 'password123'): Promise<string> {
   const res = await request
@@ -90,6 +91,7 @@ beforeAll(async () => {
   carolId = carolRow.rows[0].id;
   const daveRow = await pool.query("SELECT id FROM users WHERE email = 'dave-test@test.com'");
   const eveRow = await pool.query("SELECT id FROM users WHERE email = 'eve-test@test.com'");
+  eveId = eveRow.rows[0].id;
 
   // Memberships:
   // TestOps: Alice=Admin, Bob=Lead, Carol=Member, Dave=Viewer
@@ -328,6 +330,68 @@ describe('Idempotency', () => {
       .set('Idempotency-Key', key)
       .send({ title: 'Different payload', teamId: opsTeamId });
     expect(res2.status).toBe(409);
+  });
+
+  it('serializes parallel retries with the same key into one created item', async () => {
+    const key = `test-key-parallel-${Date.now()}`;
+    const payload = {
+      title: `Parallel idempotent item ${Date.now()}`,
+      description: 'Parallel retry safety check',
+      teamId: opsTeamId,
+    };
+
+    const [first, second] = await Promise.all([
+      request
+        .post('/api/items')
+        .set('Authorization', `Bearer ${carolToken}`)
+        .set('Idempotency-Key', key)
+        .send(payload),
+      request
+        .post('/api/items')
+        .set('Authorization', `Bearer ${carolToken}`)
+        .set('Idempotency-Key', key)
+        .send(payload),
+    ]);
+
+    expect([first.status, second.status]).toEqual([201, 201]);
+    expect(first.body).toEqual(second.body);
+
+    const count = await pool.query(
+      'SELECT COUNT(*)::int AS count FROM work_items WHERE title = $1 AND team_id = $2',
+      [payload.title, opsTeamId],
+    );
+    expect(count.rows[0].count).toBe(1);
+  });
+});
+
+describe('Assignment and Request Validation', () => {
+  it('requires assignees to belong to the work item team', async () => {
+    const createRes = await createItem(aliceToken, { assigneeId: eveId });
+    expect(createRes.status).toBe(400);
+
+    const validItem = await createItem(aliceToken);
+    const updateRes = await request
+      .patch(`/api/items/${validItem.body.item.id}`)
+      .set('Authorization', `Bearer ${aliceToken}`)
+      .send({ assigneeId: eveId, version: 1 });
+    expect(updateRes.status).toBe(400);
+  });
+
+  it('does not let Members assign another user while creating an item', async () => {
+    const res = await createItem(carolToken, { assigneeId: bobId });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects malformed IDs and invalid enum filters with 400', async () => {
+    const badId = await request
+      .get('/api/items/not-a-uuid')
+      .set('Authorization', `Bearer ${aliceToken}`);
+    expect(badId.status).toBe(400);
+
+    const badStatus = await request
+      .get('/api/items?status=NotAStatus')
+      .set('Authorization', `Bearer ${aliceToken}`);
+    expect(badStatus.status).toBe(400);
   });
 });
 

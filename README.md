@@ -12,7 +12,7 @@ An internal operations management system for creating, assigning, tracking, appr
 - **Team-Scoped Authorization** — Viewer, Member, Lead, Admin roles per team; items outside user's teams return 404
 - **Concurrency Control** — Optimistic versioning; atomic claims; stale updates rejected with 409
 - **Idempotency** — Duplicate-safe item creation with `Idempotency-Key` header
-- **Automated Tests** — 25 tests covering concurrent claim, stale update, idempotency, workflow auth, resource auth, activity atomicity
+- **Automated Tests** — 29 integration tests covering concurrent claim, concurrent idempotent retries, stale updates, workflow authorization, resource authorization, assignment validation, and activity atomicity
 
 ## Tech Stack
 
@@ -112,7 +112,7 @@ All accounts use password: `password123`
 | `npm run dev:api` | Start only the API server |
 | `npm run dev:web` | Start only the frontend |
 | `npm test` | Run all backend tests |
-| `npm run typecheck` | TypeScript type check (backend) |
+| `npm run typecheck` | Backend type check and frontend production build |
 | `npm run db:migrate` | Run database migrations |
 | `npm run db:seed` | Seed demo data |
 
@@ -141,9 +141,10 @@ npm test
 Tests cover:
 - ✅ Concurrent claim (two parallel requests, exactly one wins)
 - ✅ Stale version update rejected with 409
-- ✅ Idempotency (same key returns same result; different payload returns 409)
+- ✅ Idempotency (same key returns the same result, including parallel retries; different payload returns 409)
 - ✅ Workflow authorization (invalid transitions blocked; Member can't approve; creator can't approve own item)
 - ✅ Resource authorization (cross-team access blocked; Viewer restrictions enforced)
+- ✅ Assignment and request validation (assignees must be team members; malformed IDs and enum filters return 400)
 - ✅ Activity atomicity (events created in same transaction as state changes)
 - ✅ Search and cursor pagination
 - ✅ Dashboard summary
