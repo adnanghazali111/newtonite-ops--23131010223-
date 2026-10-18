@@ -46,8 +46,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen p-0 md:p-5 lg:p-7">
-      <div className="ops-shell-shadow flex min-h-screen w-full overflow-hidden bg-[#f7f6f1] md:h-[calc(100dvh-2.5rem)] md:min-h-0 md:rounded-[2rem] md:border md:border-white/80 lg:h-[calc(100dvh-3.5rem)]">
+    <div className="min-h-dvh bg-[#f7f6f1]">
+      <div className="flex h-dvh min-h-dvh w-full overflow-hidden bg-[#f7f6f1]">
         <aside className={`hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-[#e8e6df] bg-white py-5 transition-[width,padding] duration-200 md:flex ${sidebarCollapsed ? 'w-[82px] px-3' : 'w-[238px] px-4'}`}>
           <div className={`mb-10 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-2'}`}>
             <Link to="/" title="Newtonite overview" className={`flex min-w-0 items-center ${sidebarCollapsed ? '' : 'gap-3'}`}>
@@ -101,7 +101,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
 
-        <section className="min-w-0 flex-1 md:flex md:min-h-0 md:flex-col">
+        <section className="min-w-0 flex-1 overflow-y-auto md:flex md:min-h-0 md:flex-col md:overflow-hidden">
           <header className="flex h-[74px] shrink-0 items-center justify-between border-b border-[#e8e6df] bg-[#fbfbf7] px-5 sm:px-7 lg:px-9">
             <Link to="/" className="flex items-center gap-2 md:hidden">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#202b27] text-sm font-black text-[#c7f36a]">N</span>
