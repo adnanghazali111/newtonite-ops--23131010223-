@@ -35,8 +35,8 @@ export function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#c8f079] p-3 sm:p-6 lg:p-9">
-      <div className="ops-shell-shadow ops-grid mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-[1320px] overflow-hidden rounded-[2rem] border-[10px] border-[#202b27] bg-[#bde86c] lg:min-h-[calc(100vh-4.5rem)] lg:grid-cols-[1.18fr_0.82fr] lg:rounded-[2.7rem]">
+    <main className="min-h-dvh bg-[#c8f079] p-3 sm:p-6 lg:h-dvh lg:overflow-hidden lg:p-9">
+      <div className="ops-shell-shadow ops-grid mx-auto grid min-h-[calc(100dvh-1.5rem)] max-w-[1320px] overflow-hidden rounded-[2rem] border-[10px] border-[#202b27] bg-[#bde86c] lg:h-[calc(100dvh-4.5rem)] lg:min-h-0 lg:grid-cols-[1.18fr_0.82fr] lg:rounded-[2.7rem]">
         <section className="relative hidden overflow-hidden p-10 lg:flex lg:flex-col lg:justify-between">
           <div className="relative z-10 flex items-center gap-3 text-[#202b27]">
             <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#202b27] text-lg font-black text-[#c7f36a] shadow-[0_4px_0_#8fba39]">N</span>
@@ -64,8 +64,8 @@ export function LoginPage() {
           <div className="absolute bottom-20 right-36 h-28 w-28 rounded-[2rem] bg-[#2b3932] shadow-[0_15px_30px_rgb(23_35_28_/_20%)]" />
         </section>
 
-        <section className="flex min-h-[calc(100vh-1.5rem)] items-center justify-center bg-[#fffefa] p-5 sm:p-10 lg:min-h-0 lg:p-12">
-          <div className="w-full max-w-[370px]">
+        <section className="flex min-h-[calc(100dvh-1.5rem)] items-center justify-center bg-[#fffefa] p-5 sm:p-10 lg:min-h-0 lg:items-start lg:overflow-y-auto lg:overscroll-contain lg:p-12">
+          <div className="w-full max-w-[370px] lg:my-auto lg:py-8">
             <div className="mb-8 lg:hidden">
               <div className="mb-6 flex items-center gap-2.5">
                 <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#202b27] font-black text-[#c7f36a]">N</span>
