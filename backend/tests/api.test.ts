@@ -648,6 +648,22 @@ describe('Search and Pagination', () => {
     expect(res.status).toBe(200);
     expect(res.body.items.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('returns prefix matches for type-ahead search', async () => {
+    const created = await createItem(carolToken, {
+      title: 'Smoke unit type-ahead check',
+      description: 'Prefix matching should include this work item.',
+    });
+    expect(created.status).toBe(201);
+
+    for (const query of ['s', 'sm']) {
+      const res = await request
+        .get(`/api/items?q=${query}`)
+        .set('Authorization', `Bearer ${carolToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.items.map((item: { id: string }) => item.id)).toContain(created.body.item.id);
+    }
+  });
 });
 
 describe('Dashboard', () => {

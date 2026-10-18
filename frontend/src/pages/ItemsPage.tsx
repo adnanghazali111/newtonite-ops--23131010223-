@@ -69,7 +69,7 @@ export function ItemsPage() {
         <form onSubmit={search} className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <label className="relative block min-w-0 flex-1">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-[#99a19b]">⌕</span>
-            <input value={searchInput} onChange={(event) => { setSearchInput(event.target.value); setIsSearchFocused(true); }} onFocus={() => setIsSearchFocused(true)} onKeyDown={(event) => { if (event.key === 'Escape') setIsSearchFocused(false); }} className="ops-input pl-9 text-sm" placeholder="Search work items, incidents, or requests" aria-expanded={isSearchFocused && searchInput.trim().length >= 2} aria-controls="work-item-suggestions" />
+            <input value={searchInput} onChange={(event) => { setSearchInput(event.target.value); setIsSearchFocused(true); }} onFocus={() => setIsSearchFocused(true)} onKeyDown={(event) => { if (event.key === 'Escape') setIsSearchFocused(false); }} className="ops-input pl-9 text-sm" placeholder="Search work items, incidents, or requests" aria-expanded={isSearchFocused && searchInput.trim().length >= 1} aria-controls="work-item-suggestions" />
             <WorkItemSuggestions query={searchInput} visible={isSearchFocused} onSelect={() => setIsSearchFocused(false)} />
           </label>
           <div className="grid grid-cols-2 gap-2 sm:flex">

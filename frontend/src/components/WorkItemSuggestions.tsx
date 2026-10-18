@@ -12,7 +12,7 @@ interface WorkItemSuggestionsProps {
 
 export function WorkItemSuggestions({ query, visible, onSelect }: WorkItemSuggestionsProps) {
   const deferredQuery = useDeferredValue(query.trim());
-  const enabled = visible && deferredQuery.length >= 2;
+  const enabled = visible && deferredQuery.length >= 1;
   const { data, isFetching, isError } = useQuery({
     queryKey: ['work-item-suggestions', deferredQuery],
     queryFn: () => api.getItems({ q: deferredQuery, limit: '6' }),
@@ -20,7 +20,7 @@ export function WorkItemSuggestions({ query, visible, onSelect }: WorkItemSugges
     staleTime: 15_000,
   });
 
-  if (!visible || query.trim().length < 2) return null;
+  if (!visible || query.trim().length < 1) return null;
 
   return (
     <div id="work-item-suggestions" role="listbox" aria-label="Matching work items" className="ops-card-shadow absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 overflow-hidden rounded-xl border border-[#dde4ce] bg-white text-left">

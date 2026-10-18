@@ -62,6 +62,11 @@ function sortObjectKeys(value: unknown): unknown {
   return value;
 }
 
+function buildPrefixSearchQuery(value: string): string | null {
+  const terms = value.match(/[\p{L}\p{N}_]+/gu)?.slice(0, 12) || [];
+  return terms.length ? terms.map((term) => `${term}:*`).join(' & ') : null;
+}
+
 async function isTeamMember(userId: string, teamId: string): Promise<boolean> {
   const result = await query(
     'SELECT 1 FROM memberships WHERE user_id = $1 AND team_id = $2',
@@ -144,9 +149,22 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     if (q) {
-      conditions.push(`w.search_vector @@ plainto_tsquery('english', $${paramIdx})`);
-      params.push(q);
-      paramIdx++;
+      const normalizedQuery = q.trim();
+      const prefixQuery = buildPrefixSearchQuery(q);
+      if (normalizedQuery.length === 1) {
+        // English full-text search treats some one-character terms (such as
+        // "s") as stop words. Keep the first keystroke useful for type-ahead
+        // and the work-item list with a bounded substring fallback.
+        conditions.push(`(w.title ILIKE $${paramIdx} OR COALESCE(w.description, '') ILIKE $${paramIdx})`);
+        params.push(`%${normalizedQuery}%`);
+        paramIdx++;
+      } else if (prefixQuery) {
+        conditions.push(`w.search_vector @@ to_tsquery('english', $${paramIdx})`);
+        params.push(prefixQuery);
+        paramIdx++;
+      } else {
+        conditions.push('FALSE');
+      }
     }
 
     if (cursor) {
