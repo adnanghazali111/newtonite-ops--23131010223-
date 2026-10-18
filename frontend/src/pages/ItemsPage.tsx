@@ -9,189 +9,123 @@ export function ItemsPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState(searchParams.get('q') || '');
-
   const filters: Record<string, string> = {};
+
   for (const [key, value] of searchParams.entries()) {
     if (value) filters[key] = value;
   }
   if (!filters.limit) filters.limit = '25';
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['items', filters],
     queryFn: () => api.getItems(filters),
   });
 
   const setFilter = (key: string, value: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (value) {
-      newParams.set(key, value);
-    } else {
-      newParams.delete(key);
-    }
-    newParams.delete('cursor'); // Reset pagination on filter change
-    setSearchParams(newParams);
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    next.delete('cursor');
+    setSearchParams(next);
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFilter('q', searchInput);
+  const clearFilters = () => {
+    setSearchInput('');
+    setSearchParams({});
   };
 
-  const loadMore = () => {
-    if (data?.nextCursor) {
-      const newParams = new URLSearchParams(searchParams);
-      newParams.set('cursor', data.nextCursor);
-      setSearchParams(newParams);
-    }
+  const search = (event: React.FormEvent) => {
+    event.preventDefault();
+    setFilter('q', searchInput.trim());
   };
+
+  const showNextPage = () => {
+    if (!data?.nextCursor) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('cursor', data.nextCursor);
+    setSearchParams(next);
+  };
+
+  const hasFilters = [...searchParams.keys()].some((key) => key !== 'cursor');
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Work Items</h1>
-        <Link
-          to="/items/new"
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          + New Item
-        </Link>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
-        <div className="flex flex-wrap gap-3 items-end">
-          <form onSubmit={handleSearch} className="flex gap-2 flex-1 min-w-[200px]">
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search items..."
-              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
-            <button type="submit" className="px-3 py-1.5 bg-gray-100 rounded-lg text-sm hover:bg-gray-200 transition-colors">
-              🔍
-            </button>
-          </form>
-
-          <select
-            value={searchParams.get('status') || ''}
-            onChange={(e) => setFilter('status', e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="">All Status</option>
-            <option value="Open">Open</option>
-            <option value="InProgress">In Progress</option>
-            <option value="AwaitingApproval">Awaiting Approval</option>
-            <option value="Resolved">Resolved</option>
-            <option value="Closed">Closed</option>
-          </select>
-
-          <select
-            value={searchParams.get('priority') || ''}
-            onChange={(e) => setFilter('priority', e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="">All Priority</option>
-            <option value="Critical">Critical</option>
-            <option value="High">High</option>
-            <option value="Medium">Medium</option>
-            <option value="Low">Low</option>
-          </select>
-
-          <select
-            value={searchParams.get('teamId') || ''}
-            onChange={(e) => setFilter('teamId', e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="">All Teams</option>
-            {user?.memberships.map((m) => (
-              <option key={m.teamId} value={m.teamId}>{m.teamName}</option>
-            ))}
-          </select>
-
-          {searchParams.toString() && (
-            <button
-              onClick={() => { setSearchParams({}); setSearchInput(''); }}
-              className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700"
-            >
-              Clear
-            </button>
-          )}
+    <div className="space-y-5">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-[#8a958c]">Workspace / work items</p>
+          <h1 className="mt-1 text-3xl font-black tracking-[-0.05em] text-[#202b27] sm:text-4xl">Work that keeps things moving.</h1>
+          <p className="mt-2 text-sm text-[#78817b]">Search, filter, and act on the operational queue.</p>
         </div>
-      </div>
+        <Link to="/items/new" className="ops-primary-button ops-lime-button text-xs"><span className="text-base">+</span> New work item</Link>
+      </header>
 
-      {/* Items table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {isLoading ? (
-          <ItemsSkeleton />
-        ) : error ? (
-          <div className="p-8 text-center">
-            <p className="text-red-600 mb-2">Failed to load items</p>
-            <button onClick={() => refetch()} className="text-blue-600 text-sm hover:underline">Retry</button>
+      <section className="ops-card-shadow rounded-[1.45rem] border border-[#e4e3dc] bg-white p-4 sm:p-5">
+        <form onSubmit={search} className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <label className="relative block min-w-0 flex-1">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-[#99a19b]">⌕</span>
+            <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} className="ops-input pl-9 text-sm" placeholder="Search work items, incidents, or requests" />
+          </label>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <select value={searchParams.get('status') || ''} onChange={(event) => setFilter('status', event.target.value)} className="ops-input min-w-0 py-[0.64rem] text-xs font-bold text-[#59645e] sm:w-[145px]">
+              <option value="">All status</option><option value="Open">Open</option><option value="InProgress">In progress</option><option value="AwaitingApproval">Awaiting approval</option><option value="Resolved">Resolved</option><option value="Closed">Closed</option>
+            </select>
+            <select value={searchParams.get('priority') || ''} onChange={(event) => setFilter('priority', event.target.value)} className="ops-input min-w-0 py-[0.64rem] text-xs font-bold text-[#59645e] sm:w-[135px]">
+              <option value="">Priority</option><option value="Critical">Critical</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option>
+            </select>
+            <select value={searchParams.get('teamId') || ''} onChange={(event) => setFilter('teamId', event.target.value)} className="ops-input col-span-2 min-w-0 py-[0.64rem] text-xs font-bold text-[#59645e] sm:w-[155px]">
+              <option value="">All teams</option>{user?.memberships.map((membership) => <option key={membership.teamId} value={membership.teamId}>{membership.teamName}</option>)}
+            </select>
           </div>
+          <button type="submit" className="ops-primary-button hidden text-xs lg:inline-flex">Search</button>
+        </form>
+        <div className="mt-3 flex items-center justify-between border-t border-[#f0efea] pt-3">
+          <p className="text-[11px] font-semibold text-[#98a099]">{isFetching && !isLoading ? 'Refreshing results…' : 'Filters apply to work you can access.'}</p>
+          {hasFilters && <button onClick={clearFilters} className="text-[11px] font-extrabold text-[#698b42] hover:text-[#273128]">Clear filters</button>}
+        </div>
+      </section>
+
+      <section className="ops-card-shadow overflow-hidden rounded-[1.55rem] border border-[#e4e3dc] bg-white">
+        <div className="flex items-center justify-between border-b border-[#edede7] px-5 py-4 sm:px-6">
+          <div><p className="text-sm font-black text-[#26312d]">Operations queue</p><p className="mt-0.5 text-[11px] text-[#929a93]">{data ? `${data.items.length} item${data.items.length === 1 ? '' : 's'} on this page` : 'Loading current items'}</p></div>
+          <span className="rounded-lg bg-[#f1f5e8] px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#718157]">Cursor view</span>
+        </div>
+
+        {isLoading ? <ItemsSkeleton /> : error ? (
+          <EmptyState icon="!" title="Could not load work items" message="The queue is temporarily unavailable. Check the connection and retry." action={<button onClick={() => refetch()} className="ops-primary-button mt-4 text-xs">Retry queue</button>} />
         ) : data?.items.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            <p className="text-lg mb-2">No items found</p>
-            <Link to="/items/new" className="text-blue-600 text-sm hover:underline">Create your first item</Link>
-          </div>
+          <EmptyState icon="◌" title="No work items found" message={hasFilters ? 'Try loosening a filter or clearing the search.' : 'Create the first item for your operations queue.'} action={hasFilters ? <button onClick={clearFilters} className="ops-primary-button mt-4 text-xs">Clear filters</button> : <Link to="/items/new" className="ops-primary-button ops-lime-button mt-4 text-xs">Create work item</Link>} />
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/50">
-                    <th className="text-left px-4 py-3 font-medium text-gray-500">Title</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500 hidden md:table-cell">Type</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500 hidden sm:table-cell">Priority</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500 hidden lg:table-cell">Assignee</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500 hidden lg:table-cell">Team</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500 hidden xl:table-cell">Created</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
+              <table className="w-full min-w-[760px] text-left">
+                <thead className="bg-[#fbfbf7] text-[10px] font-extrabold uppercase tracking-[0.1em] text-[#9ba19b]"><tr><th className="px-5 py-3.5 sm:px-6">Work item</th><th className="hidden px-3 py-3.5 md:table-cell">Type</th><th className="px-3 py-3.5">Status</th><th className="px-3 py-3.5">Priority</th><th className="hidden px-3 py-3.5 lg:table-cell">Assignee</th><th className="hidden px-3 py-3.5 xl:table-cell">Team</th><th className="px-5 py-3.5 text-right sm:px-6">Open</th></tr></thead>
+                <tbody className="divide-y divide-[#f0f0ea]">
                   {data?.items.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <Link to={`/items/${item.id}`} className="text-blue-600 hover:text-blue-800 font-medium hover:underline">
-                          {item.title}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell"><TypeBadge type={item.type} /></td>
-                      <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
-                      <td className="px-4 py-3 hidden sm:table-cell"><PriorityBadge priority={item.priority} /></td>
-                      <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">{item.assigneeName || <span className="text-gray-400">Unassigned</span>}</td>
-                      <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">{item.teamName}</td>
-                      <td className="px-4 py-3 text-gray-400 hidden xl:table-cell">{new Date(item.createdAt).toLocaleDateString()}</td>
+                    <tr key={item.id} className="group transition hover:bg-[#fbfdf6]">
+                      <td className="max-w-[290px] px-5 py-4 sm:px-6"><Link to={`/items/${item.id}`} className="block truncate text-sm font-extrabold text-[#29352f] transition group-hover:text-[#638a37]">{item.title}</Link><p className="mt-1 truncate text-[11px] font-medium text-[#929a94]">{item.description || 'No description provided'}</p></td>
+                      <td className="hidden px-3 py-4 md:table-cell"><TypeBadge type={item.type} /></td>
+                      <td className="px-3 py-4"><StatusBadge status={item.status} /></td>
+                      <td className="px-3 py-4"><PriorityBadge priority={item.priority} /></td>
+                      <td className="hidden px-3 py-4 text-xs font-semibold text-[#657069] lg:table-cell">{item.assigneeName || <span className="text-[#a6aca7]">Unassigned</span>}</td>
+                      <td className="hidden px-3 py-4 text-xs font-semibold text-[#657069] xl:table-cell">{item.teamName}</td>
+                      <td className="px-5 py-4 text-right sm:px-6"><Link to={`/items/${item.id}`} className="inline-grid h-8 w-8 place-items-center rounded-lg bg-[#eff5e0] text-sm font-bold text-[#577a36] transition group-hover:bg-[#c7f36a] group-hover:text-[#263128]">→</Link></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-
-            {data?.hasMore && (
-              <div className="px-4 py-3 border-t border-gray-100 text-center">
-                <button
-                  onClick={loadMore}
-                  className="text-blue-600 text-sm font-medium hover:underline"
-                >
-                  Load More →
-                </button>
-              </div>
-            )}
+            {data?.hasMore && <div className="flex items-center justify-between border-t border-[#edede7] px-5 py-4 sm:px-6"><p className="text-[11px] font-semibold text-[#99a19b]">More items are available in the next cursor page.</p><button onClick={showNextPage} className="ops-quiet-button text-xs">Next page <span>→</span></button></div>}
           </>
         )}
-      </div>
+      </section>
     </div>
   );
 }
 
+function EmptyState({ icon, title, message, action }: { icon: string; title: string; message: string; action: React.ReactNode }) {
+  return <div className="px-6 py-14 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#f1f5e8] text-xl font-black text-[#718857]">{icon}</span><h2 className="mt-4 text-base font-black text-[#3a4540]">{title}</h2><p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#8b948d]">{message}</p>{action}</div>;
+}
+
 function ItemsSkeleton() {
-  return (
-    <div className="animate-pulse p-4 space-y-3">
-      {[...Array(5)].map((_, i) => (
-        <div key={i} className="h-10 bg-gray-100 rounded" />
-      ))}
-    </div>
-  );
+  return <div className="animate-pulse divide-y divide-[#f0f0ea]">{Array.from({ length: 6 }, (_, index) => <div key={index} className="flex items-center gap-5 px-6 py-5"><div className="h-9 flex-1 rounded-xl bg-[#f0f1ec]" /><div className="h-7 w-20 rounded-lg bg-[#f0f1ec]" /><div className="h-7 w-16 rounded-lg bg-[#f0f1ec]" /></div>)}</div>;
 }
