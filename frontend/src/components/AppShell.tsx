@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { WorkItemSuggestions } from './WorkItemSuggestions';
 
 const navItems = [
   { to: '/', label: 'Overview', Icon: DashboardIcon },
@@ -14,6 +15,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [workspaceSearch, setWorkspaceSearch] = useState('');
+  const [isWorkspaceSearchFocused, setIsWorkspaceSearchFocused] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const initials = user?.displayName
     .split(' ')
@@ -107,12 +109,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#202b27] text-sm font-black text-[#c7f36a]">N</span>
               <span className="text-sm font-extrabold text-[#202b27]">Newtonite</span>
             </Link>
-            <form onSubmit={searchWorkspace} className="hidden max-w-sm flex-1 md:block">
+            <form onSubmit={searchWorkspace} className="relative hidden max-w-sm flex-1 md:block">
               <label className="relative block">
                 <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8d9891]" />
-                <input ref={searchRef} type="search" value={workspaceSearch} onChange={(event) => setWorkspaceSearch(event.target.value)} className="h-10 w-full rounded-xl border border-[#e7e5de] bg-white py-2 pl-9 pr-12 text-xs font-semibold text-[#334039] outline-none transition placeholder:text-[#9aa09b] focus:border-[#9cce39] focus:ring-4 focus:ring-[#c7f36a]/25" placeholder="Search work items" aria-label="Search work items" />
+                <input ref={searchRef} type="search" value={workspaceSearch} onChange={(event) => { setWorkspaceSearch(event.target.value); setIsWorkspaceSearchFocused(true); }} onFocus={() => setIsWorkspaceSearchFocused(true)} onKeyDown={(event) => { if (event.key === 'Escape') setIsWorkspaceSearchFocused(false); }} className="h-10 w-full rounded-xl border border-[#e7e5de] bg-white py-2 pl-9 pr-12 text-xs font-semibold text-[#334039] outline-none transition placeholder:text-[#9aa09b] focus:border-[#9cce39] focus:ring-4 focus:ring-[#c7f36a]/25" placeholder="Search work items" aria-label="Search work items" aria-expanded={isWorkspaceSearchFocused && workspaceSearch.trim().length >= 2} aria-controls="work-item-suggestions" />
                 <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-[#f1f3ec] px-1.5 py-0.5 text-[9px] font-bold text-[#8f9791]">⌘ K</kbd>
               </label>
+              <WorkItemSuggestions query={workspaceSearch} visible={isWorkspaceSearchFocused} onSelect={() => setIsWorkspaceSearchFocused(false)} />
             </form>
             <div className="ml-auto flex items-center gap-2 sm:gap-3">
               <span className="hidden rounded-lg bg-[#fff1ce] px-2.5 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#8a651c] sm:inline">Live workspace</span>

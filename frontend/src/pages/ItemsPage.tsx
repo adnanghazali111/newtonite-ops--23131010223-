@@ -4,11 +4,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { StatusBadge, PriorityBadge, TypeBadge } from '../components/Badges';
 import { useAuth } from '../auth';
+import { WorkItemSuggestions } from '../components/WorkItemSuggestions';
 
 export function ItemsPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState(searchParams.get('q') || '');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const filters: Record<string, string> = {};
 
   for (const [key, value] of searchParams.entries()) {
@@ -67,7 +69,8 @@ export function ItemsPage() {
         <form onSubmit={search} className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <label className="relative block min-w-0 flex-1">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-[#99a19b]">⌕</span>
-            <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} className="ops-input pl-9 text-sm" placeholder="Search work items, incidents, or requests" />
+            <input value={searchInput} onChange={(event) => { setSearchInput(event.target.value); setIsSearchFocused(true); }} onFocus={() => setIsSearchFocused(true)} onKeyDown={(event) => { if (event.key === 'Escape') setIsSearchFocused(false); }} className="ops-input pl-9 text-sm" placeholder="Search work items, incidents, or requests" aria-expanded={isSearchFocused && searchInput.trim().length >= 2} aria-controls="work-item-suggestions" />
+            <WorkItemSuggestions query={searchInput} visible={isSearchFocused} onSelect={() => setIsSearchFocused(false)} />
           </label>
           <div className="grid grid-cols-2 gap-2 sm:flex">
             <select value={searchParams.get('status') || ''} onChange={(event) => setFilter('status', event.target.value)} className="ops-input min-w-0 py-[0.64rem] text-xs font-bold text-[#59645e] sm:w-[145px]">
