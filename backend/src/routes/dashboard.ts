@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { WorkItemPriority, WorkItemStatus } from '@prisma/client';
+import { WorkItemPriority, WorkItemStatus } from '../generated/prisma/client.js';
 import { prisma } from '../db/prisma.js';
 import { authenticate, type AuthUser } from '../middleware/auth.js';
 import { getUserTeamIds } from '../services/authorize.js';

@@ -6,6 +6,7 @@ COPY backend/package.json backend/package-lock.json ./backend/
 RUN npm --prefix backend ci
 
 COPY backend/prisma ./backend/prisma
+COPY backend/prisma.config.ts ./backend/prisma.config.ts
 # Client generation validates the datasource URL but does not connect to it.
 # Docker Compose replaces this with the runtime database URL.
 ENV DATABASE_URL=postgresql://newtonite:newtonite_dev_only@db:5432/newtonite

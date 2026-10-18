@@ -57,13 +57,13 @@
 
 ## 6. Prisma Boundary
 
-**Decision:** Prisma owns the PostgreSQL schema, migration history, client lifecycle, seed data, authentication reads, membership loading, dashboard queries, and database health checks. The work-item workflow retains parameterized PostgreSQL statements for its full-text search, generated `tsvector` index, conditional version updates, and atomic claim/transition transactions.
+**Decision:** Prisma ORM 7 owns the PostgreSQL schema, migration history, client lifecycle, seed data, authentication reads, membership loading, dashboard queries, and database health checks. `prisma.config.ts` provides the CLI datasource URL, while the generated client uses Prisma's PostgreSQL driver adapter (`@prisma/adapter-pg`) at runtime. The work-item workflow retains parameterized PostgreSQL statements for its full-text search, generated `tsvector` index, conditional version updates, and atomic claim/transition transactions.
 
 **Alternatives considered:**
 - **Prisma for every statement:** Would require rewriting proven conditional SQL into raw Prisma queries for the workflow paths, without improving the transaction guarantees.
 - **Raw SQL only:** Leaves migrations and ordinary relationship reads without a typed data-model contract.
 
-**Trade-off:** This hybrid boundary uses Prisma where its relations, generated types, migrations, and upserts improve clarity, while preserving concise SQL for the concurrency-critical paths that depend on PostgreSQL-specific features.
+**Trade-off:** This hybrid boundary uses Prisma where its relations, generated types, migrations, and upserts improve clarity, while preserving concise SQL for the concurrency-critical paths that depend on PostgreSQL-specific features. The Prisma 7 upgrade eliminates the prior production advisory through its supported PostgreSQL adapter configuration; generated client files remain uncommitted and are recreated by the documented commands.
 
 ---
 

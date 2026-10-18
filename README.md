@@ -23,11 +23,11 @@ An internal operations management system for creating, assigning, tracking, appr
 | Client State | TanStack Query (React Query) |
 | Routing | React Router v7 |
 | Backend | Node.js 22 + Express + TypeScript (ESM) |
-| Database | PostgreSQL 16 + Prisma ORM |
+| Database | PostgreSQL 16 + Prisma ORM 7 (`@prisma/adapter-pg`) |
 | Containers | Docker Compose (PostgreSQL, API, Nginx-served web app) |
 | Validation | Zod |
 | Auth | JWT (jsonwebtoken) + bcryptjs |
-| Tests | Vitest + Supertest + real PostgreSQL |
+| Tests | Vitest 5 + Supertest + real PostgreSQL |
 
 ## Prerequisites
 
@@ -216,7 +216,7 @@ Tests cover:
 │   │   ├── app.ts              # Express app setup (Supertest-friendly)
 │   │   ├── server.ts           # Listen on port
 │   │   ├── db/
-│   │   │   ├── prisma.ts       # Prisma client singleton
+│   │   │   ├── prisma.ts       # Prisma 7 PostgreSQL-adapter client singleton
 │   │   │   ├── pool.ts         # Parameterized SQL + atomic transaction helper
 │   │   │   └── seed.ts         # Prisma demo data seeder
 │   │   ├── middleware/
@@ -236,6 +236,7 @@ Tests cover:
 │   ├── prisma/
 │   │   ├── schema.prisma       # Data model and indexes
 │   │   └── migrations/         # Versioned Prisma migration SQL
+│   ├── prisma.config.ts         # Prisma CLI datasource configuration
 │   ├── tsconfig.json
 │   └── vitest.config.ts
 ├── frontend/

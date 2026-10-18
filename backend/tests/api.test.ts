@@ -48,7 +48,7 @@ beforeAll(async () => {
   // Recreate the isolated test schema, then prove Prisma can build it from its
   // tracked migration. The test database is derived from DATABASE_URL in setup.ts.
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
-  await execFileAsync('npx', ['prisma', 'migrate', 'deploy', '--schema=prisma/schema.prisma'], {
+  await execFileAsync('npx', ['prisma', 'migrate', 'deploy', '--config=prisma.config.ts'], {
     cwd: path.resolve(__dirname, '..'),
     env: process.env,
   });

@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { TeamRole, WorkItemPriority, WorkItemStatus, WorkItemType } from '@prisma/client';
+import { TeamRole, WorkItemPriority, WorkItemStatus, WorkItemType } from '../generated/prisma/client.js';
 import { prisma } from './prisma.js';
 
 const DEMO_PASSWORD = 'password123';
