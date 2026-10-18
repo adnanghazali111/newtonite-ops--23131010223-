@@ -76,6 +76,7 @@ export function ItemsPage() {
             <select value={searchParams.get('priority') || ''} onChange={(event) => setFilter('priority', event.target.value)} className="ops-input min-w-0 py-[0.64rem] text-xs font-bold text-[#59645e] sm:w-[135px]">
               <option value="">Priority</option><option value="Critical">Critical</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option>
             </select>
+            <input type="date" value={searchParams.get('dueDate') || ''} onChange={(event) => setFilter('dueDate', event.target.value)} className="ops-input min-w-0 py-[0.58rem] text-xs font-bold text-[#59645e] sm:w-[145px]" aria-label="Filter by due date" />
             <select value={searchParams.get('teamId') || ''} onChange={(event) => setFilter('teamId', event.target.value)} className="ops-input col-span-2 min-w-0 py-[0.64rem] text-xs font-bold text-[#59645e] sm:w-[155px]">
               <option value="">All teams</option>{user?.memberships.map((membership) => <option key={membership.teamId} value={membership.teamId}>{membership.teamName}</option>)}
             </select>

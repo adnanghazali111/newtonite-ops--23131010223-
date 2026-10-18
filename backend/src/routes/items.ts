@@ -12,6 +12,11 @@ router.use(authenticate);
 const workItemStatuses = ['Open', 'InProgress', 'AwaitingApproval', 'Resolved', 'Closed'] as const;
 const workItemPriorities = ['Low', 'Medium', 'High', 'Critical'] as const;
 const uuidSchema = z.string().uuid();
+const dueDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}, { message: 'Invalid date' });
 
 function getItemId(req: Request, res: Response): string | null {
   const parsed = uuidSchema.safeParse(req.params.id);
@@ -71,6 +76,8 @@ const listQuerySchema = z.object({
   status: z.enum(workItemStatuses).optional(),
   priority: z.enum(workItemPriorities).optional(),
   assigneeId: z.string().uuid().optional(),
+  dueDate: dueDateSchema.optional(),
+  urgentUnassigned: z.coerce.boolean().optional(),
   q: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -84,7 +91,7 @@ router.get('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid query parameters', details: parsed.error.flatten() });
     }
 
-    const { status, priority, assigneeId, q, cursor, limit, teamId } = parsed.data;
+    const { status, priority, assigneeId, dueDate, urgentUnassigned, q, cursor, limit, teamId } = parsed.data;
     const user = req.user!;
     const userTeamIds = getUserTeamIds(user);
 
@@ -124,6 +131,16 @@ router.get('/', async (req: Request, res: Response) => {
       conditions.push(`w.assignee_id = $${paramIdx}`);
       params.push(assigneeId);
       paramIdx++;
+    }
+
+    if (dueDate) {
+      conditions.push(`DATE(w.due_at AT TIME ZONE 'UTC') = $${paramIdx}::date`);
+      params.push(dueDate);
+      paramIdx++;
+    }
+
+    if (urgentUnassigned) {
+      conditions.push(`w.assignee_id IS NULL AND w.priority IN ('High', 'Critical')`);
     }
 
     if (q) {

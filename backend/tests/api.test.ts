@@ -392,6 +392,11 @@ describe('Assignment and Request Validation', () => {
       .get('/api/items?status=NotAStatus')
       .set('Authorization', `Bearer ${aliceToken}`);
     expect(badStatus.status).toBe(400);
+
+    const badDueDate = await request
+      .get('/api/items?dueDate=2026-02-31')
+      .set('Authorization', `Bearer ${aliceToken}`);
+    expect(badDueDate.status).toBe(400);
   });
 });
 
@@ -607,6 +612,28 @@ describe('Search and Pagination', () => {
     for (const item of res.body.items) {
       expect(item.status).toBe('Open');
     }
+  });
+
+  it('filters dashboard queues by due date and urgent unassigned work', async () => {
+    const createRes = await createItem(aliceToken, {
+      title: 'Urgent dated dashboard item',
+      priority: 'High',
+      dueAt: '2026-10-18T10:00:00.000Z',
+    });
+    expect(createRes.status).toBe(201);
+    const itemId = createRes.body.item.id;
+
+    const dueDate = await request
+      .get('/api/items?dueDate=2026-10-18')
+      .set('Authorization', `Bearer ${aliceToken}`);
+    expect(dueDate.status).toBe(200);
+    expect(dueDate.body.items.map((item: { id: string }) => item.id)).toContain(itemId);
+
+    const urgent = await request
+      .get('/api/items?urgentUnassigned=true')
+      .set('Authorization', `Bearer ${aliceToken}`);
+    expect(urgent.status).toBe(200);
+    expect(urgent.body.items.map((item: { id: string }) => item.id)).toContain(itemId);
   });
 
   it('performs full-text search', async () => {
