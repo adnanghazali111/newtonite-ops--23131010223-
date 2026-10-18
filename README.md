@@ -24,6 +24,7 @@ An internal operations management system for creating, assigning, tracking, appr
 | Routing | React Router v7 |
 | Backend | Node.js 22 + Express + TypeScript (ESM) |
 | Database | PostgreSQL 16 + Prisma ORM |
+| Containers | Docker Compose (PostgreSQL, API, Nginx-served web app) |
 | Validation | Zod |
 | Auth | JWT (jsonwebtoken) + bcryptjs |
 | Tests | Vitest + Supertest + real PostgreSQL |
@@ -41,9 +42,30 @@ brew services start postgresql@16
 export PATH="/opt/homebrew/opt/node@22/bin:/opt/homebrew/opt/postgresql@16/bin:$PATH"
 ```
 
-Alternatively, use the included `docker-compose.yml` for PostgreSQL:
+## Docker Quick Start
+
+Docker runs the whole application: PostgreSQL, the Express API, and the React web app. It is the simplest way to run the project without a local Node or PostgreSQL setup.
+
 ```bash
-docker compose up -d db
+cp .env.example .env
+docker compose up --build
+```
+
+Open **http://localhost:5173**. The API health check is at **http://localhost:3001/api/health**. Docker maps PostgreSQL to **localhost:5433** by default, avoiding a clash with any local PostgreSQL instance.
+
+On macOS, if your terminal says `docker: command not found` immediately after installing Docker Desktop, restart the terminal. As a temporary workaround, run `export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"` before the Docker command.
+
+Use `npm run docker:down` to stop the stack. The named database volume is retained; use `docker compose down -v` only when you deliberately want to discard local Docker data.
+
+### Docker database with local development servers
+
+If you prefer Vite and the API watcher on your machine, start just the database container:
+
+```bash
+cp .env.example .env
+npm run docker:db
+npm run setup
+npm run dev
 ```
 
 ## Setup
@@ -119,6 +141,10 @@ All accounts use password: `password123`
 | `npm run setup` | Generate Prisma Client, migrate, and seed |
 | `npm --prefix backend run prisma:status` | Check Prisma migration state |
 | `npm --prefix backend run prisma:studio` | Open Prisma Studio locally |
+| `npm run docker:up` | Build and run PostgreSQL, API, and web containers |
+| `npm run docker:db` | Start only PostgreSQL for local development |
+| `npm run docker:down` | Stop the Docker stack, retaining its data volume |
+| `npm run docker:logs` | Follow container logs |
 
 ### Re-seeding data
 
@@ -185,6 +211,7 @@ Tests cover:
 
 ```
 ├── backend/
+│   ├── Dockerfile               # API container + Prisma migrations
 │   ├── src/
 │   │   ├── app.ts              # Express app setup (Supertest-friendly)
 │   │   ├── server.ts           # Listen on port
@@ -212,6 +239,8 @@ Tests cover:
 │   ├── tsconfig.json
 │   └── vitest.config.ts
 ├── frontend/
+│   ├── Dockerfile               # Production web container
+│   ├── nginx.conf               # API proxy + SPA fallback
 │   ├── src/
 │   │   ├── App.tsx             # Routes + providers
 │   │   ├── api.ts              # API client + types
@@ -221,8 +250,9 @@ Tests cover:
 │   ├── package.json
 │   └── vite.config.ts          # Proxy + Tailwind
 ├── .env.example
+├── .dockerignore
 ├── .gitignore
-├── docker-compose.yml
+├── docker-compose.yml           # PostgreSQL, API, web stack
 ├── ENGINEERING_DECISIONS.md
 ├── package.json                # Root scripts
 └── README.md
