@@ -21,8 +21,15 @@ export function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-    } catch {
-      setError('We could not verify those credentials. Try a demo account below.');
+    } catch (error) {
+      const requestError = error as Error & { status?: number };
+      if (requestError.status === 401) {
+        setError('We could not verify those credentials. Choose a demo account below or check your password.');
+      } else if (requestError.status) {
+        setError('The workspace service is unavailable right now. Please try again in a moment.');
+      } else {
+        setError('We could not reach the workspace service. Start the API, then try again.');
+      }
     } finally {
       setLoading(false);
     }

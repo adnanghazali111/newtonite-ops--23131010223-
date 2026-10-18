@@ -20,7 +20,10 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     throw new Error('Unauthorized');
   }
 
-  const data = await res.json();
+  const contentType = res.headers.get('content-type') ?? '';
+  const data = contentType.includes('application/json')
+    ? await res.json()
+    : { error: res.statusText || 'Request failed' };
 
   if (!res.ok) {
     const error = new Error(data.error || 'Request failed') as Error & { status: number; data: unknown };

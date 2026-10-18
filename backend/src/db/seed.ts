@@ -42,11 +42,24 @@ export async function seed() {
   // Upsert users
   const userIds: Record<string, string> = {};
   for (const user of USERS) {
-    const savedUser = await prisma.user.upsert({
+    const existingUser = await prisma.user.findUnique({
       where: { email: user.email },
-      update: { displayName: user.displayName },
-      create: { email: user.email, passwordHash, displayName: user.displayName },
+      select: { id: true, passwordHash: true },
     });
+    const hasDemoPassword = existingUser
+      ? await bcrypt.compare(DEMO_PASSWORD, existingUser.passwordHash)
+      : false;
+    const savedUser = existingUser
+      ? await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            displayName: user.displayName,
+            ...(hasDemoPassword ? {} : { passwordHash }),
+          },
+        })
+      : await prisma.user.create({
+          data: { email: user.email, passwordHash, displayName: user.displayName },
+        });
     userIds[user.email] = savedUser.id;
   }
 
