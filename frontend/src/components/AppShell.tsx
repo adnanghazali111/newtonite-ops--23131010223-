@@ -1,17 +1,20 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 
 const navItems = [
-  { to: '/', label: 'Overview', icon: '◌' },
-  { to: '/items', label: 'Work items', icon: '▦' },
-  { to: '/items/new', label: 'Create item', icon: '+' },
+  { to: '/', label: 'Overview', Icon: DashboardIcon },
+  { to: '/items', label: 'Work items', Icon: WorkItemsIcon },
+  { to: '/items/new', label: 'Create item', Icon: CreateItemIcon },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [workspaceSearch, setWorkspaceSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   const initials = user?.displayName
     .split(' ')
     .map((part) => part[0])
@@ -25,10 +28,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return location.pathname === '/items' || (location.pathname.startsWith('/items/') && location.pathname !== '/items/new');
   };
 
+  useEffect(() => {
+    const focusWorkspaceSearch = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', focusWorkspaceSearch);
+    return () => window.removeEventListener('keydown', focusWorkspaceSearch);
+  }, []);
+
+  const searchWorkspace = (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = workspaceSearch.trim();
+    navigate(query ? `/items?q=${encodeURIComponent(query)}` : '/items');
+  };
+
   return (
     <div className="min-h-screen p-0 md:p-5 lg:p-7">
-      <div className="ops-shell-shadow flex min-h-screen w-full overflow-hidden bg-[#f7f6f1] md:min-h-[calc(100vh-2.5rem)] md:rounded-[2rem] md:border md:border-white/80 lg:min-h-[calc(100vh-3.5rem)]">
-        <aside className={`hidden shrink-0 flex-col border-r border-[#e8e6df] bg-white py-5 transition-[width,padding] duration-200 md:flex ${sidebarCollapsed ? 'w-[82px] px-3' : 'w-[238px] px-4'}`}>
+      <div className="ops-shell-shadow flex min-h-screen w-full overflow-hidden bg-[#f7f6f1] md:h-[calc(100dvh-2.5rem)] md:min-h-0 md:rounded-[2rem] md:border md:border-white/80 lg:h-[calc(100dvh-3.5rem)]">
+        <aside className={`hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-[#e8e6df] bg-white py-5 transition-[width,padding] duration-200 md:flex ${sidebarCollapsed ? 'w-[82px] px-3' : 'w-[238px] px-4'}`}>
           <div className={`mb-10 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-2'}`}>
             <Link to="/" title="Newtonite overview" className={`flex min-w-0 items-center ${sidebarCollapsed ? '' : 'gap-3'}`}>
               <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#202b27] text-lg font-black text-[#c7f36a] shadow-[0_4px_0_#9cce40]">N</span>
@@ -37,10 +57,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-[#99a09b]">Operations</span>
               </span>
             </Link>
-            {!sidebarCollapsed && <button onClick={() => setSidebarCollapsed(true)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-lg font-bold text-[#7c8680] transition hover:bg-[#f1f4e9] hover:text-[#26312d]" aria-label="Collapse navigation" title="Collapse navigation">‹</button>}
+            {!sidebarCollapsed && <button onClick={() => setSidebarCollapsed(true)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#7c8680] transition hover:bg-[#f1f4e9] hover:text-[#26312d]" aria-label="Collapse navigation" title="Collapse navigation"><MenuIcon className="h-5 w-5" /></button>}
           </div>
 
-          {sidebarCollapsed && <button onClick={() => setSidebarCollapsed(false)} className="mb-8 grid h-10 w-full place-items-center rounded-xl bg-[#f0f4e7] text-lg font-bold text-[#627655] transition hover:bg-[#e3f4bd] hover:text-[#26312d]" aria-label="Expand navigation" title="Expand navigation">›</button>}
+          {sidebarCollapsed && <button onClick={() => setSidebarCollapsed(false)} className="mb-8 grid h-10 w-full place-items-center rounded-xl bg-[#f0f4e7] text-[#627655] transition hover:bg-[#e3f4bd] hover:text-[#26312d]" aria-label="Expand navigation" title="Expand navigation"><ExpandPanelIcon className="h-5 w-5" /></button>}
 
           <p className={sidebarCollapsed ? 'sr-only' : 'mb-3 px-3 text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#a3a8a4]'}>Workspace</p>
           <nav className="space-y-1.5">
@@ -58,8 +78,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       : 'text-[#6c7671] hover:bg-[#f4f5ee] hover:text-[#202b27]'
                   }`}
                 >
-                  <span className={`grid h-5 w-5 place-items-center rounded-md text-base leading-none ${active ? 'bg-[#c7f36a] text-[#202b27]' : 'bg-[#f0f1eb] text-[#68746e]'}`}>
-                    {item.icon}
+                  <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${active ? 'bg-[#c7f36a] text-[#202b27]' : 'bg-[#f0f1eb] text-[#68746e]'}`}>
+                    <item.Icon className="h-[17px] w-[17px]" />
                   </span>
                   <span className={sidebarCollapsed ? 'sr-only' : ''}>{item.label}</span>
                 </Link>
@@ -75,25 +95,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <p className="truncate text-[10px] font-semibold text-[#86908a]">{user?.memberships[0]?.role || 'Team member'}</p>
               </div>
             </div>
-            <button onClick={logout} title="Sign out" aria-label="Sign out" className={`mt-3 rounded-lg border border-[#dfe5cf] bg-white px-2 py-1.5 text-[11px] font-bold text-[#66716b] transition hover:bg-[#fff1ed] hover:text-[#c14d43] ${sidebarCollapsed ? 'grid w-full place-items-center text-base' : 'w-full'}`}>
-              {sidebarCollapsed ? <span aria-hidden="true">↪</span> : 'Sign out'}
+            <button onClick={logout} title="Sign out" aria-label="Sign out" className={`mt-3 flex items-center justify-center gap-2 rounded-lg border border-[#dfe5cf] bg-white px-2 py-1.5 text-[11px] font-bold text-[#66716b] transition hover:bg-[#fff1ed] hover:text-[#c14d43] ${sidebarCollapsed ? 'w-full' : 'w-full'}`}>
+              {sidebarCollapsed && <LogOutIcon className="h-4 w-4" />}<span className={sidebarCollapsed ? 'sr-only' : ''}>Sign out</span>
             </button>
           </div>
         </aside>
 
-        <section className="min-w-0 flex-1">
-          <header className="flex h-[74px] items-center justify-between border-b border-[#e8e6df] bg-[#fbfbf7] px-5 sm:px-7 lg:px-9">
+        <section className="min-w-0 flex-1 md:flex md:min-h-0 md:flex-col">
+          <header className="flex h-[74px] shrink-0 items-center justify-between border-b border-[#e8e6df] bg-[#fbfbf7] px-5 sm:px-7 lg:px-9">
             <Link to="/" className="flex items-center gap-2 md:hidden">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#202b27] text-sm font-black text-[#c7f36a]">N</span>
               <span className="text-sm font-extrabold text-[#202b27]">Newtonite</span>
             </Link>
-            <div className="hidden max-w-sm flex-1 md:block">
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-[#e7e5de] bg-white px-3 text-xs font-medium text-[#9aa09b]">
-                <span className="text-base leading-none">⌕</span>
-                Search operations workspace
-                <span className="ml-auto rounded-md bg-[#f1f3ec] px-1.5 py-0.5 text-[9px] font-bold text-[#8f9791]">⌘ K</span>
-              </div>
-            </div>
+            <form onSubmit={searchWorkspace} className="hidden max-w-sm flex-1 md:block">
+              <label className="relative block">
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8d9891]" />
+                <input ref={searchRef} type="search" value={workspaceSearch} onChange={(event) => setWorkspaceSearch(event.target.value)} className="h-10 w-full rounded-xl border border-[#e7e5de] bg-white py-2 pl-9 pr-12 text-xs font-semibold text-[#334039] outline-none transition placeholder:text-[#9aa09b] focus:border-[#9cce39] focus:ring-4 focus:ring-[#c7f36a]/25" placeholder="Search work items" aria-label="Search work items" />
+                <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-[#f1f3ec] px-1.5 py-0.5 text-[9px] font-bold text-[#8f9791]">⌘ K</kbd>
+              </label>
+            </form>
             <div className="ml-auto flex items-center gap-2 sm:gap-3">
               <span className="hidden rounded-lg bg-[#fff1ce] px-2.5 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#8a651c] sm:inline">Live workspace</span>
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#daeeb0] text-xs font-extrabold text-[#243027] md:hidden">{initials}</span>
@@ -114,9 +134,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          <main className="w-full px-4 py-6 sm:px-7 lg:px-9 lg:py-8">{children}</main>
+          <main className="w-full px-4 py-6 sm:px-7 md:min-h-0 md:flex-1 md:overflow-y-auto lg:px-9 lg:py-8">{children}</main>
         </section>
       </div>
     </div>
   );
+}
+
+function DashboardIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>;
+}
+
+function WorkItemsIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d="M9 6h11" /><path d="M9 12h11" /><path d="M9 18h11" /><path d="M4 6h.01" /><path d="M4 12h.01" /><path d="M4 18h.01" /></svg>;
+}
+
+function CreateItemIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={className} aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
+}
+
+function MenuIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={className} aria-hidden="true"><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></svg>;
+}
+
+function ExpandPanelIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /><path d="m13 9 3 3-3 3" /></svg>;
+}
+
+function SearchIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={className} aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>;
+}
+
+function LogOutIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true"><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /><path d="M21 19V5a2 2 0 0 0-2-2h-5" /></svg>;
 }

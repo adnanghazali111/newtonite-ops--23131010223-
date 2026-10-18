@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
@@ -15,6 +15,10 @@ export function ItemsPage() {
     if (value) filters[key] = value;
   }
   if (!filters.limit) filters.limit = '25';
+
+  useEffect(() => {
+    setSearchInput(searchParams.get('q') || '');
+  }, [searchParams]);
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['items', filters],
