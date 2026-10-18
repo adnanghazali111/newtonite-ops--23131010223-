@@ -6,14 +6,17 @@ import { useAuth } from '../auth';
 
 export function DashboardPage() {
   const { user } = useAuth();
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error, refetch, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['dashboard'],
     queryFn: api.getDashboardSummary,
   });
-  const { data: calendarItems } = useQuery({
+  const { data: calendarItems, refetch: refetchCalendar, isFetching: isCalendarFetching } = useQuery({
     queryKey: ['dashboard-calendar-items'],
     queryFn: () => api.getItems({ limit: '100' }),
   });
+
+  const refreshDashboard = () => Promise.all([refetch(), refetchCalendar()]);
+  const isRefreshing = isFetching || isCalendarFetching;
 
   if (isLoading) return <DashboardSkeleton />;
 
@@ -23,7 +26,7 @@ export function DashboardPage() {
         <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#ffe2da] text-xl">!</span>
         <h1 className="mt-4 text-xl font-black text-[#3a2e2b]">Your dashboard could not load.</h1>
         <p className="mt-2 text-sm text-[#927268]">Check the API connection and try again.</p>
-        <button onClick={() => refetch()} className="ops-primary-button mt-5 text-xs">Retry dashboard</button>
+        <button onClick={() => refreshDashboard()} className="ops-primary-button mt-5 text-xs">Retry dashboard</button>
       </section>
     );
   }
@@ -55,7 +58,9 @@ export function DashboardPage() {
                 <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-[#bdc7bd]">Today at a glance</p>
                 <h2 className="mt-2 max-w-md text-2xl font-black leading-tight tracking-[-0.04em]">Stay ahead of work that blocks the team.</h2>
               </div>
-              <button onClick={() => refetch()} className="rounded-full bg-[#c7f36a] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.09em] text-[#1f2926] transition hover:bg-[#d8fa91]" title="Refresh dashboard">Live</button>
+              <span aria-live="polite" className="rounded-full bg-[#c7f36a] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.09em] text-[#1f2926]">
+                {isRefreshing ? 'Refreshing' : `Updated ${formatSyncTime(dataUpdatedAt)}`}
+              </span>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <PulseMetric label="Assigned to me" value={data.assignedToMe} tone="lime" to={`/items?assigneeId=${user?.id || ''}`} />
@@ -65,7 +70,22 @@ export function DashboardPage() {
           </div>
           <div className="absolute -bottom-20 -right-14 h-64 w-64 rounded-full bg-[#f9d456]/90 blur-[1px]" />
           <div className="absolute bottom-14 right-28 h-36 w-36 rounded-full bg-[#ff796b]/85 blur-[2px]" />
-          <div className="absolute right-7 top-20 h-16 w-16 rounded-full border border-white/20" />
+          <button
+            type="button"
+            onClick={() => refreshDashboard()}
+            disabled={isRefreshing}
+            title="Refresh dashboard data"
+            aria-label="Refresh dashboard data"
+            className="absolute right-7 top-20 z-20 grid h-16 w-16 place-items-center rounded-full border border-white/30 bg-[#26342f]/90 text-[#c7f36a] shadow-[0_0_0_5px_rgb(255_255_255_/_5%)] transition hover:scale-105 hover:border-[#c7f36a] hover:bg-[#314139] focus:outline-none focus:ring-4 focus:ring-[#c7f36a]/40 disabled:cursor-wait disabled:opacity-75"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" className={`h-6 w-6 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 11a8 8 0 0 0-14.9-4.1L3 9" />
+              <path d="M3 4v5h5" />
+              <path d="M4 13a8 8 0 0 0 14.9 4.1L21 15" />
+              <path d="M21 20v-5h-5" />
+            </svg>
+            <span className="sr-only">Refresh dashboard data</span>
+          </button>
         </section>
 
         <section className="ops-card-shadow rounded-[1.55rem] border border-[#e5e4dd] bg-white p-5">
@@ -152,6 +172,11 @@ function eventIcon(type: string) {
 
 function eventLabel(type: string) {
   return ({ created: 'created', updated: 'updated', claimed: 'claimed', transition: 'moved', commented: 'commented on' }[type] || type);
+}
+
+function formatSyncTime(timestamp: number) {
+  if (!timestamp) return 'just now';
+  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(timestamp);
 }
 
 function DashboardSkeleton() {
