@@ -5,7 +5,7 @@ import { z } from 'zod';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { query } from '../db/pool.js';
+import { prisma } from '../db/prisma.js';
 import { authenticate } from '../middleware/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,15 +32,16 @@ router.post('/login', async (req: Request, res: Response) => {
 
     const { email, password } = parsed.data;
 
-    const result = await query('SELECT id, email, display_name, password_hash FROM users WHERE email = $1', [email]);
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, displayName: true, passwordHash: true },
+    });
 
-    if (result.rows.length === 0) {
+    if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const user = result.rows[0];
-
-    const isMatch = await bcrypt.compare(password, user.password_hash);
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -54,7 +55,7 @@ router.post('/login', async (req: Request, res: Response) => {
       user: {
         id: user.id,
         email: user.email,
-        displayName: user.display_name,
+        displayName: user.displayName,
       },
     });
   } catch (err) {

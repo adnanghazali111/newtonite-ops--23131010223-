@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { query } from '../db/pool.js';
+import { WorkItemPriority, WorkItemStatus } from '@prisma/client';
+import { prisma } from '../db/prisma.js';
 import { authenticate, type AuthUser } from '../middleware/auth.js';
 import { getUserTeamIds } from '../services/authorize.js';
 
@@ -12,6 +13,9 @@ router.get('/summary', async (req: Request, res: Response) => {
   try {
     const user = (req as Request & { user: AuthUser }).user;
     const teamIds = getUserTeamIds(user);
+    const approverTeamIds = user.memberships
+      .filter((membership) => membership.role === 'Lead' || membership.role === 'Admin')
+      .map((membership) => membership.teamId);
 
     if (teamIds.length === 0) {
       return res.json({
@@ -36,73 +40,65 @@ router.get('/summary', async (req: Request, res: Response) => {
       recentActivity,
     ] = await Promise.all([
       // Items assigned to me that are not closed
-      query(
-        `SELECT COUNT(*) as count FROM work_items
-         WHERE assignee_id = $1 AND team_id = ANY($2) AND status NOT IN ('Closed', 'Resolved')`,
-        [user.id, teamIds]
-      ),
+      prisma.workItem.count({
+        where: {
+          assigneeId: user.id,
+          teamId: { in: teamIds },
+          status: { notIn: [WorkItemStatus.Closed, WorkItemStatus.Resolved] },
+        },
+      }),
       // Unassigned items with High or Critical priority
-      query(
-        `SELECT COUNT(*) as count FROM work_items
-         WHERE assignee_id IS NULL AND team_id = ANY($1) AND priority IN ('High', 'Critical')
-         AND status = 'Open'`,
-        [teamIds]
-      ),
+      prisma.workItem.count({
+        where: {
+          assigneeId: null,
+          teamId: { in: teamIds },
+          priority: { in: [WorkItemPriority.High, WorkItemPriority.Critical] },
+          status: WorkItemStatus.Open,
+        },
+      }),
       // Items awaiting approval where user is Lead/Admin (not creator)
-      query(
-        `SELECT COUNT(*) as count FROM work_items w
-         JOIN memberships m ON m.team_id = w.team_id AND m.user_id = $1
-         WHERE w.status = 'AwaitingApproval'
-         AND w.team_id = ANY($2)
-         AND m.role IN ('Lead', 'Admin')
-         AND w.created_by != $1`,
-        [user.id, teamIds]
-      ),
-      query(
-        `SELECT COUNT(*) as count FROM work_items
-         WHERE team_id = ANY($1) AND status = 'Open'`,
-        [teamIds]
-      ),
-      query(
-        `SELECT COUNT(*) as count FROM work_items
-         WHERE team_id = ANY($1) AND status = 'InProgress'`,
-        [teamIds]
-      ),
-      query(
-        `SELECT COUNT(*) as count FROM work_items
-         WHERE team_id = ANY($1) AND status = 'Resolved'`,
-        [teamIds]
-      ),
+      prisma.workItem.count({
+        where: {
+          status: WorkItemStatus.AwaitingApproval,
+          teamId: { in: approverTeamIds },
+          createdBy: { not: user.id },
+        },
+      }),
+      prisma.workItem.count({ where: { teamId: { in: teamIds }, status: WorkItemStatus.Open } }),
+      prisma.workItem.count({ where: { teamId: { in: teamIds }, status: WorkItemStatus.InProgress } }),
+      prisma.workItem.count({ where: { teamId: { in: teamIds }, status: WorkItemStatus.Resolved } }),
       // Recent activity across user's teams
-      query(
-        `SELECT ae.id, ae.work_item_id, ae.event_type, ae.payload, ae.created_at,
-                u.display_name as actor_name,
-                w.title as work_item_title
-         FROM activity_events ae
-         JOIN users u ON u.id = ae.actor_id
-         JOIN work_items w ON w.id = ae.work_item_id
-         WHERE ae.team_id = ANY($1)
-         ORDER BY ae.created_at DESC, ae.id DESC
-         LIMIT 15`,
-        [teamIds]
-      ),
+      prisma.activityEvent.findMany({
+        where: { teamId: { in: teamIds } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 15,
+        select: {
+          id: true,
+          workItemId: true,
+          eventType: true,
+          payload: true,
+          createdAt: true,
+          actor: { select: { displayName: true } },
+          workItem: { select: { title: true } },
+        },
+      }),
     ]);
 
     res.json({
-      assignedToMe: parseInt(assignedToMe.rows[0].count),
-      unassignedUrgent: parseInt(unassignedUrgent.rows[0].count),
-      awaitingMyApproval: parseInt(awaitingMyApproval.rows[0].count),
-      totalOpen: parseInt(totalOpen.rows[0].count),
-      totalInProgress: parseInt(totalInProgress.rows[0].count),
-      totalResolved: parseInt(totalResolved.rows[0].count),
-      recentActivity: recentActivity.rows.map((r) => ({
-        id: r.id,
-        workItemId: r.work_item_id,
-        workItemTitle: r.work_item_title,
-        eventType: r.event_type,
-        payload: r.payload,
-        actorName: r.actor_name,
-        createdAt: r.created_at,
+      assignedToMe,
+      unassignedUrgent,
+      awaitingMyApproval,
+      totalOpen,
+      totalInProgress,
+      totalResolved,
+      recentActivity: recentActivity.map((event) => ({
+        id: event.id,
+        workItemId: event.workItemId,
+        workItemTitle: event.workItem.title,
+        eventType: event.eventType,
+        payload: event.payload,
+        actorName: event.actor.displayName,
+        createdAt: event.createdAt,
       })),
     });
   } catch (err) {

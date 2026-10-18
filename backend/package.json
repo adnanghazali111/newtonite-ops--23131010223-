@@ -8,16 +8,23 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:migrate": "tsx src/db/migrate.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:migrate": "npm run prisma:migrate",
+    "db:migrate:legacy": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "prisma:generate": "cd .. && ./backend/node_modules/.bin/prisma generate --schema=backend/prisma/schema.prisma",
+    "prisma:migrate": "cd .. && ./backend/node_modules/.bin/prisma migrate deploy --schema=backend/prisma/schema.prisma",
+    "prisma:status": "cd .. && ./backend/node_modules/.bin/prisma migrate status --schema=backend/prisma/schema.prisma",
+    "prisma:studio": "cd .. && ./backend/node_modules/.bin/prisma studio --schema=backend/prisma/schema.prisma"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.13.0",
+    "prisma": "^6.19.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {

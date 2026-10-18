@@ -11,7 +11,7 @@
     "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run build",
     "db:migrate": "npm --prefix backend run db:migrate",
     "db:seed": "npm --prefix backend run db:seed",
-    "setup": "npm run db:migrate && npm run db:seed"
+    "setup": "npm --prefix backend run prisma:generate && npm run db:migrate && npm run db:seed"
   },
   "devDependencies": {
     "concurrently": "^10.0.6"

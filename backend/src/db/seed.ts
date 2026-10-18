@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
-import { query } from './pool.js';
+import { TeamRole, WorkItemPriority, WorkItemStatus, WorkItemType } from '@prisma/client';
+import { prisma } from './prisma.js';
 
 const DEMO_PASSWORD = 'password123';
 
@@ -11,6 +12,12 @@ interface SeedUser {
 interface SeedTeam {
   name: string;
 }
+
+type SeedMembership = {
+  email: string;
+  team: string;
+  role: TeamRole;
+};
 
 const USERS: SeedUser[] = [
   { email: 'alice@newtonite.com', displayName: 'Alice Johnson' },
@@ -35,53 +42,50 @@ export async function seed() {
   // Upsert users
   const userIds: Record<string, string> = {};
   for (const user of USERS) {
-    const res = await query(
-      `INSERT INTO users (email, password_hash, display_name)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name
-       RETURNING id`,
-      [user.email, passwordHash, user.displayName]
-    );
-    userIds[user.email] = res.rows[0].id;
+    const savedUser = await prisma.user.upsert({
+      where: { email: user.email },
+      update: { displayName: user.displayName },
+      create: { email: user.email, passwordHash, displayName: user.displayName },
+    });
+    userIds[user.email] = savedUser.id;
   }
 
   // Upsert teams
   const teamIds: Record<string, string> = {};
   for (const team of TEAMS) {
-    const res = await query(
-      `INSERT INTO teams (name)
-       VALUES ($1)
-       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-       RETURNING id`,
-      [team.name]
-    );
-    teamIds[team.name] = res.rows[0].id;
+    const savedTeam = await prisma.team.upsert({
+      where: { name: team.name },
+      update: {},
+      create: { name: team.name },
+    });
+    teamIds[team.name] = savedTeam.id;
   }
 
   // Memberships:
   // Operations: Alice (Admin), Bob (Lead), Carol (Member), Dave (Viewer)
   // Engineering: Bob (Admin), Eve (Lead), Frank (Member)
   // Support: Carol (Lead), Dave (Member), Alice (Viewer)
-  const memberships = [
-    { email: 'alice@newtonite.com', team: 'Operations', role: 'Admin' },
-    { email: 'bob@newtonite.com', team: 'Operations', role: 'Lead' },
-    { email: 'carol@newtonite.com', team: 'Operations', role: 'Member' },
-    { email: 'dave@newtonite.com', team: 'Operations', role: 'Viewer' },
-    { email: 'bob@newtonite.com', team: 'Engineering', role: 'Admin' },
-    { email: 'eve@newtonite.com', team: 'Engineering', role: 'Lead' },
-    { email: 'frank@newtonite.com', team: 'Engineering', role: 'Member' },
-    { email: 'carol@newtonite.com', team: 'Support', role: 'Lead' },
-    { email: 'dave@newtonite.com', team: 'Support', role: 'Member' },
-    { email: 'alice@newtonite.com', team: 'Support', role: 'Viewer' },
+  const memberships: SeedMembership[] = [
+    { email: 'alice@newtonite.com', team: 'Operations', role: TeamRole.Admin },
+    { email: 'bob@newtonite.com', team: 'Operations', role: TeamRole.Lead },
+    { email: 'carol@newtonite.com', team: 'Operations', role: TeamRole.Member },
+    { email: 'dave@newtonite.com', team: 'Operations', role: TeamRole.Viewer },
+    { email: 'bob@newtonite.com', team: 'Engineering', role: TeamRole.Admin },
+    { email: 'eve@newtonite.com', team: 'Engineering', role: TeamRole.Lead },
+    { email: 'frank@newtonite.com', team: 'Engineering', role: TeamRole.Member },
+    { email: 'carol@newtonite.com', team: 'Support', role: TeamRole.Lead },
+    { email: 'dave@newtonite.com', team: 'Support', role: TeamRole.Member },
+    { email: 'alice@newtonite.com', team: 'Support', role: TeamRole.Viewer },
   ];
 
   for (const m of memberships) {
-    await query(
-      `INSERT INTO memberships (user_id, team_id, role)
-       VALUES ($1, $2, $3::team_role)
-       ON CONFLICT (user_id, team_id) DO UPDATE SET role = EXCLUDED.role`,
-      [userIds[m.email], teamIds[m.team], m.role]
-    );
+    const userId = userIds[m.email];
+    const teamId = teamIds[m.team];
+    await prisma.membership.upsert({
+      where: { userId_teamId: { userId, teamId } },
+      update: { role: m.role },
+      create: { userId, teamId, role: m.role },
+    });
   }
 
   // Seed some work items
@@ -94,9 +98,9 @@ export async function seed() {
     {
       title: 'Server room temperature alert',
       description: 'Temperature sensors in rack B3 reading above threshold. Investigate HVAC unit.',
-      type: 'Incident',
-      priority: 'Critical',
-      status: 'Open',
+      type: WorkItemType.Incident,
+      priority: WorkItemPriority.Critical,
+      status: WorkItemStatus.Open,
       assigneeId: null,
       createdBy: carolId,
       teamId: opsTeamId,
@@ -104,9 +108,9 @@ export async function seed() {
     {
       title: 'Update backup rotation schedule',
       description: 'Weekly backup rotation needs to be updated per Q4 compliance requirements.',
-      type: 'Task',
-      priority: 'High',
-      status: 'InProgress',
+      type: WorkItemType.Task,
+      priority: WorkItemPriority.High,
+      status: WorkItemStatus.InProgress,
       assigneeId: bobId,
       createdBy: aliceId,
       teamId: opsTeamId,
@@ -114,9 +118,9 @@ export async function seed() {
     {
       title: 'New employee access provisioning',
       description: 'Provision VPN and building access for 3 new hires starting next Monday.',
-      type: 'Request',
-      priority: 'Medium',
-      status: 'AwaitingApproval',
+      type: WorkItemType.Request,
+      priority: WorkItemPriority.Medium,
+      status: WorkItemStatus.AwaitingApproval,
       assigneeId: carolId,
       createdBy: carolId,
       teamId: opsTeamId,
@@ -124,9 +128,9 @@ export async function seed() {
     {
       title: 'Firewall rule change for staging',
       description: 'Open port 8443 on staging firewall for new API gateway.',
-      type: 'Change',
-      priority: 'Medium',
-      status: 'Open',
+      type: WorkItemType.Change,
+      priority: WorkItemPriority.Medium,
+      status: WorkItemStatus.Open,
       assigneeId: null,
       createdBy: aliceId,
       teamId: opsTeamId,
@@ -134,9 +138,9 @@ export async function seed() {
     {
       title: 'Monthly infrastructure audit',
       description: 'Complete October infrastructure audit checklist and submit report.',
-      type: 'Task',
-      priority: 'Low',
-      status: 'Resolved',
+      type: WorkItemType.Task,
+      priority: WorkItemPriority.Low,
+      status: WorkItemStatus.Resolved,
       assigneeId: bobId,
       createdBy: aliceId,
       teamId: opsTeamId,
@@ -144,25 +148,27 @@ export async function seed() {
   ];
 
   for (const item of items) {
-    const existing = await query(
-      'SELECT id FROM work_items WHERE title = $1 AND team_id = $2',
-      [item.title, item.teamId]
-    );
-    if (existing.rows.length > 0) continue;
+    const existing = await prisma.workItem.findFirst({
+      where: { title: item.title, teamId: item.teamId },
+      select: { id: true },
+    });
+    if (existing) continue;
 
-    const res = await query(
-      `INSERT INTO work_items (title, description, type, priority, status, assignee_id, created_by, team_id)
-       VALUES ($1, $2, $3::work_item_type, $4::work_item_priority, $5::work_item_status, $6, $7, $8)
-       RETURNING id`,
-      [item.title, item.description, item.type, item.priority, item.status, item.assigneeId, item.createdBy, item.teamId]
-    );
+    const savedItem = await prisma.workItem.create({
+      data: item,
+      select: { id: true },
+    });
 
     // Add initial activity event
-    await query(
-      `INSERT INTO activity_events (work_item_id, team_id, actor_id, event_type, payload)
-       VALUES ($1, $2, $3, 'created', $4)`,
-      [res.rows[0].id, item.teamId, item.createdBy, JSON.stringify({ title: item.title, status: item.status })]
-    );
+    await prisma.activityEvent.create({
+      data: {
+        workItemId: savedItem.id,
+        teamId: item.teamId,
+        actorId: item.createdBy,
+        eventType: 'created',
+        payload: { title: item.title, status: item.status },
+      },
+    });
   }
 
   console.log('Seed complete.');
@@ -180,9 +186,9 @@ export async function seed() {
 const isMain = process.argv[1]?.endsWith('seed.ts') || process.argv[1]?.endsWith('seed.js');
 if (isMain) {
   seed()
-    .then(() => process.exit(0))
     .catch((err) => {
       console.error(err);
-      process.exit(1);
-    });
+      process.exitCode = 1;
+    })
+    .finally(() => prisma.$disconnect());
 }

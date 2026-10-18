@@ -55,6 +55,16 @@
 
 **Trade-off:** The outbox table demonstrates the transactional outbox pattern for reliable async processing without the implementation cost of a worker. This is explicitly documented as a known limitation rather than a hidden gap.
 
+## 6. Prisma Boundary
+
+**Decision:** Prisma owns the PostgreSQL schema, migration history, client lifecycle, seed data, authentication reads, membership loading, dashboard queries, and database health checks. The work-item workflow retains parameterized PostgreSQL statements for its full-text search, generated `tsvector` index, conditional version updates, and atomic claim/transition transactions.
+
+**Alternatives considered:**
+- **Prisma for every statement:** Would require rewriting proven conditional SQL into raw Prisma queries for the workflow paths, without improving the transaction guarantees.
+- **Raw SQL only:** Leaves migrations and ordinary relationship reads without a typed data-model contract.
+
+**Trade-off:** This hybrid boundary uses Prisma where its relations, generated types, migrations, and upserts improve clarity, while preserving concise SQL for the concurrency-critical paths that depend on PostgreSQL-specific features.
+
 ---
 
 ## Known Limitations

@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { query } from '../db/pool.js';
+import { prisma } from '../db/prisma.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,38 +50,37 @@ export async function authenticate(
     return;
   }
 
-  // Look up the user
-  const userResult = await query(
-    `SELECT id, email, display_name FROM users WHERE id = $1`,
-    [decoded.userId],
-  );
+  const user = await prisma.user.findUnique({
+    where: { id: decoded.userId },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      memberships: {
+        select: {
+          teamId: true,
+          role: true,
+          team: { select: { name: true } },
+        },
+      },
+    },
+  });
 
-  if (userResult.rows.length === 0) {
+  if (!user) {
     res.status(401).json({ error: "User not found" });
     return;
   }
 
-  const row = userResult.rows[0];
-
-  // Fetch team memberships
-  const membershipResult = await query(
-    `SELECT m.team_id, t.name AS team_name, m.role
-       FROM memberships m
-       JOIN teams t ON t.id = m.team_id
-      WHERE m.user_id = $1`,
-    [decoded.userId],
-  );
-
-  const memberships = membershipResult.rows.map((m) => ({
-    teamId: m.team_id as string,
-    teamName: m.team_name as string,
-    role: m.role as "Viewer" | "Member" | "Lead" | "Admin",
+  const memberships = user.memberships.map((membership) => ({
+    teamId: membership.teamId,
+    teamName: membership.team.name,
+    role: membership.role,
   }));
 
   req.user = {
-    id: row.id,
-    email: row.email,
-    displayName: row.display_name,
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName,
     memberships,
   };
 

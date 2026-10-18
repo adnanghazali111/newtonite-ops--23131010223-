@@ -2,9 +2,15 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import supertest from 'supertest';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import app from '../src/app.js';
 
 const { Pool } = pg;
+const execFileAsync = promisify(execFile);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Use the test database URL from setup.ts
 const pool = new Pool({
@@ -39,9 +45,13 @@ async function login(email: string, password = 'password123'): Promise<string> {
 // ─── Setup / Teardown ───────────────────────────────────────
 
 beforeAll(async () => {
-  // Run migrations on test database
-  const { runMigrations } = await import('../src/db/migrate.js');
-  await runMigrations();
+  // Recreate the isolated test schema, then prove Prisma can build it from its
+  // tracked migration. The test database is derived from DATABASE_URL in setup.ts.
+  await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public');
+  await execFileAsync('npx', ['prisma', 'migrate', 'deploy', '--schema=prisma/schema.prisma'], {
+    cwd: path.resolve(__dirname, '..'),
+    env: process.env,
+  });
 
   // Seed test data
   const passwordHash = await bcrypt.hash('password123', 10);
@@ -663,6 +673,15 @@ describe('Search and Pagination', () => {
       expect(res.status).toBe(200);
       expect(res.body.items.map((item: { id: string }) => item.id)).toContain(created.body.item.id);
     }
+  });
+});
+
+describe('Health', () => {
+  it('reports a Prisma-backed database connection', async () => {
+    const res = await request.get('/api/health');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ success: true, database: 'connected' });
   });
 });
 

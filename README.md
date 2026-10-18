@@ -12,7 +12,7 @@ An internal operations management system for creating, assigning, tracking, appr
 - **Team-Scoped Authorization** — Viewer, Member, Lead, Admin roles per team; items outside user's teams return 404
 - **Concurrency Control** — Optimistic versioning; atomic claims; stale updates rejected with 409
 - **Idempotency** — Duplicate-safe item creation with `Idempotency-Key` header
-- **Automated Tests** — 29 integration tests covering concurrent claim, concurrent idempotent retries, stale updates, workflow authorization, resource authorization, assignment validation, and activity atomicity
+- **Automated Tests** — 32 integration tests covering migrations, concurrent claim, concurrent idempotent retries, stale updates, workflow authorization, resource authorization, assignment validation, activity atomicity, search, and dashboard data
 
 ## Tech Stack
 
@@ -23,7 +23,7 @@ An internal operations management system for creating, assigning, tracking, appr
 | Client State | TanStack Query (React Query) |
 | Routing | React Router v7 |
 | Backend | Node.js 22 + Express + TypeScript (ESM) |
-| Database | PostgreSQL 16 |
+| Database | PostgreSQL 16 + Prisma ORM |
 | Validation | Zod |
 | Auth | JWT (jsonwebtoken) + bcryptjs |
 | Tests | Vitest + Supertest + real PostgreSQL |
@@ -79,7 +79,8 @@ psql -d postgres -c "CREATE DATABASE newtonite_test OWNER newtonite;"
 ### 4. Run migrations and seed
 
 ```bash
-npm run db:migrate    # Creates all tables and indexes
+npm --prefix backend run prisma:generate  # Generates the typed Prisma client
+npm run db:migrate    # Applies tracked Prisma migrations
 npm run db:seed       # Seeds demo users, teams, and sample work items
 ```
 
@@ -115,6 +116,9 @@ All accounts use password: `password123`
 | `npm run typecheck` | Backend type check and frontend production build |
 | `npm run db:migrate` | Run database migrations |
 | `npm run db:seed` | Seed demo data |
+| `npm run setup` | Generate Prisma Client, migrate, and seed |
+| `npm --prefix backend run prisma:status` | Check Prisma migration state |
+| `npm --prefix backend run prisma:studio` | Open Prisma Studio locally |
 
 ### Re-seeding data
 
@@ -139,6 +143,7 @@ npm test
 ```
 
 Tests cover:
+- ✅ Prisma migration and database health connection
 - ✅ Concurrent claim (two parallel requests, exactly one wins)
 - ✅ Stale version update rejected with 409
 - ✅ Idempotency (same key returns the same result, including parallel retries; different payload returns 409)
@@ -184,9 +189,9 @@ Tests cover:
 │   │   ├── app.ts              # Express app setup (Supertest-friendly)
 │   │   ├── server.ts           # Listen on port
 │   │   ├── db/
-│   │   │   ├── pool.ts         # PostgreSQL connection pool + transaction helper
-│   │   │   ├── migrate.ts      # SQL migrations
-│   │   │   └── seed.ts         # Demo data seeder
+│   │   │   ├── prisma.ts       # Prisma client singleton
+│   │   │   ├── pool.ts         # Parameterized SQL + atomic transaction helper
+│   │   │   └── seed.ts         # Prisma demo data seeder
 │   │   ├── middleware/
 │   │   │   └── auth.ts         # JWT auth + membership loader
 │   │   ├── routes/
@@ -199,8 +204,11 @@ Tests cover:
 │   │       └── workflow.ts     # State machine + transition validation
 │   ├── tests/
 │   │   ├── setup.ts            # Test DB config
-│   │   └── api.test.ts         # 25 integration tests
+│   │   └── api.test.ts         # 32 integration tests
 │   ├── package.json
+│   ├── prisma/
+│   │   ├── schema.prisma       # Data model and indexes
+│   │   └── migrations/         # Versioned Prisma migration SQL
 │   ├── tsconfig.json
 │   └── vitest.config.ts
 ├── frontend/
